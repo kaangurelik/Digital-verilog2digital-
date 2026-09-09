@@ -1,0 +1,1 @@
+`define SHARED_MASK 4'b0101

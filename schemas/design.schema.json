@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/design",
+  "title": "Normalized Verilog design version 1",
+  "description": "Vectors are ordered least significant bit first. Integer bits identify electrical signals; string bits are binary constants. Net names may alias the same bits.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "top", "ports", "nets", "cells", "origins", "diagnostics", "tools", "configuration"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "top": {"$ref": "#/$defs/name"},
+    "ports": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/port"}},
+    "nets": {"type": "array", "maxItems": 65536, "items": {"$ref": "#/$defs/net"}},
+    "cells": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/cell"}},
+    "origins": {"type": "array", "items": {"$ref": "#/$defs/origin"}},
+    "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
+    "tools": {
+      "type": "object", "additionalProperties": false, "required": ["yosys", "pyslang"],
+      "properties": {"yosys": {"type": "string", "minLength": 1}, "pyslang": {"type": "string", "minLength": 1}}
+    },
+    "configuration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sources", "include_dirs", "defines", "parameters"],
+      "properties": {
+        "sources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/name"}},
+        "include_dirs": {"type": "array", "items": {"$ref": "#/$defs/name"}},
+        "defines": {"type": "object", "additionalProperties": {"type": "string"}},
+        "parameters": {"type": "object", "additionalProperties": {"type": ["integer", "string"]}}
+      }
+    }
+  },
+  "$defs": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "bit": {"oneOf": [{"type": "integer", "minimum": 2, "maximum": 2147483647}, {"enum": ["0", "1"]}]},
+    "bits": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/bit"}},
+    "port": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "direction", "bits", "offset", "upto", "signed", "source"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"}, "direction": {"enum": ["input", "output"]},
+        "bits": {"$ref": "#/$defs/bits"}, "offset": {"type": "integer"},
+        "upto": {"type": "boolean"}, "signed": {"type": "boolean"}, "source": {"type": "string"}
+      }
+    },
+    "net": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "bits", "offset", "upto", "signed", "source", "hidden"],
+      "properties": {
+        "name": {"$ref": "#/$defs/name"}, "bits": {"$ref": "#/$defs/bits"},
+        "offset": {"type": "integer"}, "upto": {"type": "boolean"}, "signed": {"type": "boolean"},
+        "source": {"type": "string"}, "hidden": {"type": "boolean"}
+      }
+    },
+    "cell": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "type", "native_name", "parameters", "ports", "port_directions", "source", "hierarchy"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
+        "type": {"$ref": "#/$defs/name"}, "native_name": {"$ref": "#/$defs/name"},
+        "parameters": {"type": "object", "maxProperties": 16, "additionalProperties": {"type": "integer"}},
+        "ports": {
+          "type": "object", "minProperties": 1, "maxProperties": 8,
+          "additionalProperties": {"type": "array", "minItems": 1, "maxItems": 4096, "items": {"$ref": "#/$defs/bit"}}
+        },
+        "port_directions": {"type": "object", "additionalProperties": {"enum": ["input", "output"]}},
+        "source": {"type": "string"}, "hierarchy": {"type": "string"}
+      }
+    },
+    "origin": {
+      "type": "object", "additionalProperties": false, "required": ["module", "end_line", "end_column"],
+      "properties": {
+        "module": {"$ref": "#/$defs/name"}, "path": {"type": "string"},
+        "line": {"type": "integer", "minimum": 1}, "column": {"type": "integer", "minimum": 1},
+        "end_line": {"type": ["integer", "null"], "minimum": 1},
+        "end_column": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "diagnostic": {
+      "type": "object", "additionalProperties": false, "required": ["code", "message", "severity"],
+      "properties": {
+        "code": {"$ref": "#/$defs/name"}, "message": {"type": "string"},
+        "severity": {"enum": ["warning", "note", "error", "fatal", "ignored"]},
+        "path": {"type": "string"}, "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}
