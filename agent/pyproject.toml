@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "verilog2digital"
+version = "0.1.0"
+description = "Verified Verilog conversion and local layout assistance for Digital"
+requires-python = ">=3.11"
+dependencies = ["jsonschema==4.26.0", "pyslang==11.0.0"]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[project.scripts]
+v2d = "verilog2digital.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

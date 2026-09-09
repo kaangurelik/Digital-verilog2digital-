@@ -83,3 +83,14 @@ nbactions.xml
 .project
 .settings
 .vscode
+
+# Verilog-to-Digital development artifacts
+/.tools/
+/.runs/
+/.venv/
+**/__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+/gui/build/
+/dist/

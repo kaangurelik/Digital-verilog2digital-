@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "digital_revision": "ad6d68fe2e0277cad02beaa7f2a87e366a971b39",
+  "jdk": {
+    "version": "17.0.20.1+1",
+    "url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1%2B1/OpenJDK17U-jdk_x64_windows_hotspot_17.0.20.1_1.zip",
+    "sha256": "e53a79c3c3d86865bd7e787903884331068e71321714ffd44f145785affc7cb0",
+    "directory": "jdk-17.0.20.1+1"
+  },
+  "hdl": {
+    "version": "2026-09-05",
+    "url": "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-09-05/oss-cad-suite-windows-x64-20260905.tgz",
+    "sha256": "f687703f149009d32f9fc009cf48d3816a506890feaee7973df1affd13bcfd90",
+    "directory": "oss-cad-suite"
+  },
+  "elk": "0.12.0",
+  "python_dependencies": ["jsonschema==4.26.0", "pytest==9.1.1", "pyslang==11.0.0"]
+}

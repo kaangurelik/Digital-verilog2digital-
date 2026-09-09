@@ -7,7 +7,7 @@
     </formats>
     <files>
         <file>
-            <source>${basedir}/target/Digital.jar</source>
+            <source>${project.build.directory}/Digital.jar</source>
             <outputDirectory>/</outputDirectory>
         </file>
         <file>
