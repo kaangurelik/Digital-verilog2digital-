@@ -120,8 +120,8 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Delay">Délai</string>
     <string name="elem_Delay_tt">Retarde un signal par une valeur ajustable de temps de propagation équivalent d'une
         porte logique.
-        Toutes les autres composantes dans Digital ont un délai de temps de propagation d'une durée de 1.
-        Cette composante peut servir à réaliser n'importe quel temps de propagation nécessaire.
+        Tous les autres composants dans Digital ont un délai de temps de propagation d'une durée de 1.
+        Ce composant peut servir à réaliser n'importe quel temps de propagation nécessaire.
     </string>
     <string name="elem_Delay_pin_in">Entrée du signal qui doit être retardé.</string>
     <string name="elem_Delay_pin_out">L'entrée du signal retardée d'un temps de propagation équivalent à celui d'une
@@ -191,7 +191,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Probe">Sonde</string>
     <string name="elem_Probe_tt">Une mesure qui peut être affichée dans un graphique de données ou un tableau de
         mesures.
-        Cette composante peut être utilisée pour observer facilement des valeurs dans des circuits embarqués.
+        Ce composant peut être utilisé pour observer facilement des valeurs dans des circuits embarqués.
         N'affecte pas la simulation.
     </string>
     <string name="elem_Probe_pin_in">La valeur mesurée.</string>
@@ -255,7 +255,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_RotEncoder_pin_B">signal de l'encodeur B</string>
     <string name="elem_Keyboard">Clavier</string>
     <string name="elem_Keyboard_tt">Un clavier peut être utilisé pour entrer du texte.
-        Cette composante enregistre l'entrée dans un tampon qui peut être lu à la sortie.
+        Ce composant enregistre l'entrée dans un tampon qui peut être lu à la sortie.
         Une fenêtre séparée est ouverte pour entrer le texte.
     </string>
     <string name="elem_Keyboard_pin_C">Signal d'horloge. Un front montant supprime le caractère le plus vieux du
@@ -298,7 +298,7 @@ In the file howTo.md you can find more details about translations.
         enfoncée),
         sinon, cela se traduit par un relâchement de la touche (événement de touche relâchée).
     </string>
-    <string name="elem_MIDI_pin_en">Active la composante</string>
+    <string name="elem_MIDI_pin_en">Active le composant</string>
     <string name="elem_MIDI_pin_PC">Si activée, la valeur de N est utilisée pour changer le programme (l'instrument).
     </string>
     <string name="elem_MIDI_pin_C">Signal d'horloge</string>
@@ -338,12 +338,12 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_VDD_tt">Une connexion à une tension d'alimentation. La sortie est toujours un.</string>
     <string name="elem_VDD_pin_out">La sortie est toujours 1.</string>
     <string name="elem_Const">Valeur constante</string>
-    <string name="elem_Const_tt">Une composante qui retourne une valeur donnée comme une constante.
+    <string name="elem_Const_tt">Ue composant qui retourne une valeur donnée comme une constante.
         Cette valeur peut être mise dans le dialogue des attributs.
     </string>
     <string name="elem_Const_pin_out">Retourne la valeur donnée comme une constante.</string>
     <string name="elem_Tunnel">Tunnel</string>
-    <string name="elem_Tunnel_tt">Connecte des composantes sans un fil. Tous les tunnels ayant le même nom de réseau
+    <string name="elem_Tunnel_tt">Connecte des composants sans fil. Tous les tunnels ayant le même nom de réseau
         sont connectés ensemble.
         Fonctionne uniquement de manière locale, il est donc impossible de connecter des circuits différents.
         Les tunnels sans nom sont ignorés sans produire d'erreurs.
@@ -375,13 +375,13 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_PullUp_pin_out">Un signal haut "faible"</string>
     <string name="elem_PullUp_tt">Si un réseau n'est pas dans un état de haute impédance (Hi-Z), cette résistance tire
         le réseau à une valeur
-        haute. Dans n'importe quel autre cas, cette composante n'a aucun effet.
+        haute. Dans n'importe quel autre cas, ce composant n'a aucun effet.
     </string>
     <string name="elem_PullDown">Résistance de rappel</string>
     <string name="elem_PullDown_pin_out">Un signal bas "faible"</string>
     <string name="elem_PullDown_tt">Si un réseau n'est pas dans un état de haute impédance (Hi-Z), cette résistance tire
         le réseau à une valeur
-        basse (à la masse). Dans n'importe quel autre cas, cette composante n'a aucun effet.
+        basse (à la masse). Dans n'importe quel autre cas, ce composant n'a aucun effet.
     </string>
     <string name="elem_Driver">Pilote</string>
     <string name="elem_Driver_tt">Un pilote peut être utilisé pour connecter une valeur de signal à un autre fil.
@@ -411,9 +411,9 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="elem_PinControl">Commande de broche</string>
     <string name="elem_PinControl_tt">Logique de commande pour une broche bidirectionnelle.
-        Cette composante est nécessaire seulement dans un contexte de génération de VHDL ou de Verilog,
+        Ce composant est nécessaire seulement dans un contexte de génération de VHDL ou de Verilog,
         dans le but de créer un port HDL bidirectionnel!
-        Si vous ne voulez pas utiliser un port E/S bidirectionnel sur un FPGA, n'utilisez pas cette composante!
+        Si vous ne voulez pas utiliser un port E/S bidirectionnel sur un FPGA, n'utilisez pas ce composant !
         L'élément de commande de broche ne peut pas être utilisé dans un circuit intégré, seulement dans le circuit
         du niveau supérieur!
     </string>
@@ -424,7 +424,7 @@ In the file howTo.md you can find more details about translations.
         connectée ici.
     </string>
     <string name="elem_Multiplexer">Multiplexeur</string>
-    <string name="elem_Multiplexer_tt">Une composante qui utilise la valeur de l'entrée "sel" (sélection) pour décider
+    <string name="elem_Multiplexer_tt">Un composant qui utilise la valeur de l'entrée "sel" (sélection) pour décider
         quelle
         valeur d'entrée est émise à la sortie.
     </string>
@@ -432,7 +432,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Multiplexer_output">La valeur de l'entrée sélectionnée.</string>
     <string name="elem_Multiplexer_pin_sel">Cette entrée sert à sélectionner l'entrée qui est émise.</string>
     <string name="elem_Demultiplexer">Démultiplexeur</string>
-    <string name="elem_Demultiplexer_tt">Une composante qui émet la valeur d'entrée à une de ses sorties.
+    <string name="elem_Demultiplexer_tt">Un composant qui émet la valeur d'entrée à une de ses sorties.
         Les autres sorties sont mises à la valeur par défaut.
     </string>
     <string name="elem_Demultiplexer_pin_sel">Cette entrée sélectionner la sortie à utiliser.</string>
@@ -462,7 +462,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_PriorityEncoder_input">La valeur d''entrée {0} du codeur de priorité.</string>
     <string name="elem_RS_FF_AS">Bascule RS</string>
     <string name="elem_RS_FF_AS_short">RS</string>
-    <string name="elem_RS_FF_AS_tt">Une composante pour stocker un seul bit.
+    <string name="elem_RS_FF_AS_tt">Un composant pour stocker un seul bit.
         Fournit les fonctions "set" et "reset" pour mémoriser ou réinitialiser le bit stocké.
         Si les deux entrées sont à un, les deux sorties seront aussi à un.
         Si les deux entrées sont mises à zéro en même temps, l'état final est aléatoire.
@@ -473,7 +473,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_RS_FF_AS_pin_~Q">Retourne l'inverse de la valeur stockée.</string>
     <string name="elem_RS_FF">Bascule RS, avec horloge</string>
     <string name="elem_RS_FF_short">RS</string>
-    <string name="elem_RS_FF_tt">Une composante pour stocker un seul bit.
+    <string name="elem_RS_FF_tt">Un composant pour stocker un seul bit.
         Fournit les fonctions "set" et "reset" pour mémoriser ou réinitialiser le bit stocké.
         Si les deux entrées (S, R) sont actives au front montant de l'horloge, l'état final est aléatoire.
     </string>
@@ -495,7 +495,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_JK_FF_pin_~Q">Retourne l'inverse de la valeur stockée.</string>
     <string name="elem_D_FF">Bascule D</string>
     <string name="elem_D_FF_short">D</string>
-    <string name="elem_D_FF_tt">Une composante utilisée pour stocker une valeur.
+    <string name="elem_D_FF_tt">Un composant utilisé pour stocker une valeur.
         La valeur sur l'entrée D est stockée lors du front montant du signal d'horloge C.
         La largeur de bit peut être sélectionnée ce qui permet de stocker plusieurs bits.
     </string>
@@ -533,7 +533,7 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="elem_D_FF_AS">Bascule D asynchrone</string>
     <string name="elem_D_FF_AS_short">D-AS</string>
-    <string name="elem_D_FF_AS_tt">Une composante utilisée pour stocker une valeur.
+    <string name="elem_D_FF_AS_tt">Un composant utilisé pour stocker une valeur.
         La valeur sur l'entrée D est stockée lors du front montant du signal d'horloge C.
         Il y a deux entrées additionnelles pour mémoriser et réinitialiser immédiatement, sans signal d'horloge.
         La largeur de bit peut être sélectionnée ce qui permet de stocker plusieurs bits.
@@ -554,8 +554,8 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Monoflop_short">Mono</string>
     <string name="elem_Monoflop_tt">Une bascule monostable est mise à 1 au front montant du signal d'horloge.
         Après un délai configurable, la bascule est réinitialisée automatiquement.
-        La bascule monostable est redéclenchable. Elle peut seulement être utilisée s'il y a exactement une composante
-        horloge dans le circuit. Cette composante horloge est utilisée comme temps de base pour mesurer le délai.
+        La bascule monostable est redéclenchable. Elle peut seulement être utilisée s'il y a exactement un composant
+        horloge dans le circuit. Ce composant horloge est utilisée comme temps de base pour mesurer le délai.
     </string>
     <string name="elem_Monoflop_pin_R">L'entrée "reset". Une valeur haute réinitialise la bascule monostable.</string>
     <string name="elem_Monoflop_pin_C">Le signal d'horloge. Un front montant fixe la sortie de la bascule monostable.
@@ -564,7 +564,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Monoflop_pin_~Q">Inverse de la sortie</string>
     <string name="elem_Register">Registre</string>
     <string name="elem_Register_short">Reg</string>
-    <string name="elem_Register_tt">Une composante pour stocker des valeurs. La largeur de bit du mot peut être
+    <string name="elem_Register_tt">Un composant pour stocker des valeurs. La largeur de bit du mot peut être
         sélectionnée.
         Contrairement à une bascule D, le registre fournit une entrée qui active l'horloge.
     </string>
@@ -575,7 +575,7 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="elem_Register_pin_Q">Retourne la valeur stockée.</string>
     <string name="elem_ROM">ROM</string>
-    <string name="elem_ROM_tt">Une composante de mémoire non volatile.
+    <string name="elem_ROM_tt">Un composant de mémoire non volatile.
         Les données stockées peuvent être éditées dans le dialog d'attributs.
     </string>
     <string name="elem_ROM_pin_A">Cette entrée définit l'adresse d'un mot à émettre à la sortie.</string>
@@ -645,9 +645,9 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_RAMSinglePortSel_short">RAM</string>
     <string name="elem_RAMSinglePortSel_tt">Un module de RAM avec un port bidirectionnel pour stocker une valeur et
         émettre une valeur stockée.
-        Si l'entrée CS est basse, la composante est désactivée.
+        Si l'entrée CS est basse, le composant est désactivé.
         Cela permet de créer une RAM plus grande à partir de RAM plus petite et un décodeur d'adresse.
-        Le cycle d'écriture fonctionne comme suit: en activant l'entrée CS, la composante est activée.
+        Le cycle d'écriture fonctionne comme suit: en activant l'entrée CS, le composant est activé.
         Un front montant à l'entrée WE verrouille l'adresse, et le front descendant suivant stocke la valeur.
     </string>
     <string name="elem_RAMSinglePortSel_pin_A">L'adresse à laquelle lire et écrire.</string>
@@ -730,7 +730,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_RegisterFile_pin_Din">La valeur à stocker dans la RAM.</string>
     <string name="elem_Counter">Compteur</string>
     <string name="elem_Counter_short">Compteur</string>
-    <string name="elem_Counter_tt">Une composante simple pour compter. Le signal d'horloge incrémente le compteur.
+    <string name="elem_Counter_tt">Un composant simple pour compter. Le signal d'horloge incrémente le compteur.
         Peut être réinitialisée à 0 avec l'entrée "clr" (clear).
         Le nombre de bits est ajustable dans le dialogue des attributs.
     </string>
@@ -768,7 +768,7 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="elem_Add">Addition</string>
     <string name="elem_Add_short">Add</string>
-    <string name="elem_Add_tt">Une composante pour des calculs d'addition simples.
+    <string name="elem_Add_tt">Un composant pour des calculs d'addition simples.
         Additionne deux valeurs entières aux entrées A et B (A+B).
         Le résultat est incrémenté de un si l'entrée de retenue est active.
     </string>
@@ -779,7 +779,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Add_pin_c_o">Indicateur de retenue. Si actif, il y a eu un débordement.</string>
     <string name="elem_Sub">Soustraction</string>
     <string name="elem_Sub_short">Soustr</string>
-    <string name="elem_Sub_tt">Une composante pour des soustractions simples.
+    <string name="elem_Sub_tt">Un composant pour des soustractions simples.
         Soustrait des nombres binaires aux entrées A et B (A-B).
         Le résultat est décrémenté de 1 si l'entrée de retenue est active.
     </string>
@@ -790,7 +790,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Sub_pin_c_o">Émet un 1 si un débordement a eu lieu.</string>
     <string name="elem_Mul">Multiplication</string>
     <string name="elem_Mul_short">Mult</string>
-    <string name="elem_Mul_tt">Une composante pour la multiplication.
+    <string name="elem_Mul_tt">Un composant pour la multiplication.
         Multiplie les nombres entiers aux entrées A et B.
     </string>
     <string name="elem_Mul_pin_a">L'entrée A de la multiplication</string>
@@ -798,7 +798,7 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Mul_pin_mul">La sortie pour le résultat de la multiplication.</string>
     <string name="elem_Div">Division</string>
     <string name="elem_Div_short">Div</string>
-    <string name="elem_Div_tt">Une composante pour la division.
+    <string name="elem_Div_tt">Un composant pour la division.
         Divise le nombre entier à l'entrée A par le nombre entier à l'entrée B.
         Si le diviseur est zéro, le nombre est divisé par un à la place.
         Pour la division signée, le reste est toujours positif.
@@ -809,14 +809,14 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_Div_pin_r">Reste</string>
     <string name="elem_BarrelShifter">Décaleur</string>
     <string name="elem_BarrelShifter_short">Décal</string>
-    <string name="elem_BarrelShifter_tt">Une composante pour décaler des bits.
+    <string name="elem_BarrelShifter_tt">Un composant pour décaler des bits.
         Décale la valeur d'entrée par un nombre de bits donné par l'entrée "shift".
     </string>
     <string name="elem_BarrelShifter_pin_in">Entrée avec les bits à décaler.</string>
     <string name="elem_BarrelShifter_pin_shift">Entrée avec le nombre de bits à décaler.</string>
     <string name="elem_BarrelShifter_pin_out">Sortie de la valeur décalée.</string>
     <string name="elem_Comparator">Comparateur</string>
-    <string name="elem_Comparator_tt">Une composante pour comparer des valeurs binaires.
+    <string name="elem_Comparator_tt">Un composant pour comparer des valeurs binaires.
         Compare les nombres binaires aux entrées A et B et met la sortie correspondante à 1.
     </string>
     <string name="elem_Comparator_pin_a">L'entrée A à comparer.</string>
@@ -964,7 +964,7 @@ In the file howTo.md you can find more details about translations.
         pipeline de Muller. Le circuit doit être lancé en mode pas-à-pas et doit être en mesure d'atteindre un état
         stable
         au démarrage. Le circuit séquentiel peut alors être lancé interactivement ou avec une porte de réinitialisation.
-        Il n'est pas permis d'utiliser une composante d'horloge ordinaire dans ce mode.
+        Il n'est pas permis d'utiliser un composant d'horloge ordinaire dans ce mode.
     </string>
     <string name="elem_PowerSupply">Alimentation</string>
     <string name="elem_PowerSupply_tt">N'a aucune fonction. S'assure que l'alimentation (VDD) et la masse (GND) sont
@@ -976,15 +976,15 @@ In the file howTo.md you can find more details about translations.
     <string name="elem_PowerSupply_pin_GND">Doit être connecté à la masse (GND)!</string>
     <string name="elem_Reset">Réinitialisation</string>
     <string name="elem_Reset_pin_Reset">Sortie de réinitialisation</string>
-    <string name="elem_Reset_tt">La sortie de cette composante est gardée haute lors de l'initialisation du circuit.
+    <string name="elem_Reset_tt">La sortie de ce composant est gardée haute lors de l'initialisation du circuit.
         Après que le circuit se soit stabilisé, la sortie devient basse.
         Si la sortie est inversée alors elle se comporte de la façon inverse.
     </string>
     <string name="elem_Break">Pause</string>
     <string name="elem_Break_pin_brk">Arrête la simulation haute vitesse si un front montant est détecté.</string>
-    <string name="elem_Break_tt">Si cette composante est utilisée dans le circuit, le bouton "Exécuter jusqu'à une
+    <string name="elem_Break_tt">Si ce composant est utilisé dans le circuit, le bouton "Exécuter jusqu'à une
         pause" entre les boutons
-        "Commencer" et "Arrêter" est activé. Ce bouton exécute le circuit jusqu'à ce que cette composante reçoive
+        "Commencer" et "Arrêter" est activé. Ce bouton exécute le circuit jusqu'à ce que ce composant reçoive
         un front montant. Cet élément peut aussi être utilisé pour déboguer en exécutant un circuit jusqu'à un point
         d'arrêt. Une instruction d'assembleur BRK (break) peut également être implantée. Cela permet à un programme de
         s'exécuter jusqu'à la prochaine instruction BRK. Cette fonction peut seulement être utilisée si l'horloge
@@ -996,25 +996,25 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="elem_Stop_pin_stop">Un front montant arrête la simulation.</string>
     <string name="elem_External">Externe</string>
-    <string name="elem_External_tt">Une composante qui exécute un processus externe pour calculer la fonction logique.
-        Peut être utilisé pour spécifier le comportement d'une composante en VHDL ou en Verilog.
+    <string name="elem_External_tt">Un composant qui exécute un processus externe pour calculer la fonction logique.
+        Peut être utilisé pour spécifier le comportement d'un composant en VHDL ou en Verilog.
         La simulation du comportement en tant que telle doit être faite avec un simulateur externe.
         À l'heure actuelle, seuls le simulateur de VHDL ghdl et le simulateur de Verilog Icarus Verilog sont pris en charge.
-        L'étiquette de la composante doit correspondre au nom de l'entité ou du module!</string>
+        L'étiquette du composant doit correspondre au nom de l'entité ou du module!</string>
     <string name="elem_Diode">Diode</string>
     <string name="elem_Diode_tt">Une diode bidirectionnelle simplifiée. Peut être utilisée pour implanter un ET câblé ou
         un OU câblé.
     </string>
     <string name="error">Erreur</string>
-    <string name="err_N_isNotInputOrOutput">La broche {0} de la composante {1} n''est pas une entrée ou une sortie
+    <string name="err_N_isNotInputOrOutput">La broche {0} du composant {1} n''est pas une entrée ou une sortie
     </string>
-    <string name="err_aSingleClockNecessary">Une seule composante d'horloge est nécessaire. Toutes les bascules doivent
+    <string name="err_aSingleClockNecessary">Un seul composant d'horloge est nécessaire. Toutes les bascules doivent
         utiliser ce signal.
     </string>
     <string name="err_analyseNoInputs">Le circuit n'a pas d'entrées étiquetées</string>
     <string name="err_analyseNoOutputs">Le circuit n'a pas de sorties étiquetées</string>
     <string name="err_breakTimeOut">Aucune pause détectée après {0} cycles au point d''arrêt ''{1}''.
-        Il est possible que le nombre de cycles d''attente dans la composante de pause doive être augmenté.
+        Il est possible que le nombre de cycles d''attente dans le composant de pause doive être augmenté.
     </string>
     <string name="err_builder_exprNotSupported">L''expression {0} n''est pas prise en charge.</string>
     <string name="err_builder_operationNotSupported">L''opération {0} n''est pas prise en charge.</string>
@@ -1025,21 +1025,21 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="err_cannotAnalyse_N">Impossible d''analyser le noeud {0}</string>
     <string name="err_containsVarAndNotVar">Contient [var] et [non var]</string>
-    <string name="err_duplicatePinLabel">La broche ''{0}'' dans la composante ''{1}'' existe à deux reprises.</string>
-    <string name="err_element_N_notFound">La composante {0} n''a pas été trouvée</string>
+    <string name="err_duplicatePinLabel">La broche ''{0}'' dans le composant ''{1}'' existe à deux reprises.</string>
+    <string name="err_element_N_notFound">Le composant {0} n''a pas été trouvé</string>
     <string name="err_exact_N0_valuesNecessaryNot_N1">Des valeurs {0} exactes sont nécessaires, pas {1}</string>
     <string name="err_ffNeedsToBeConnectedToClock">La bascule doit être connectée à l'horloge.</string>
     <string name="err_invalidFileFormat">Format de fichier invalide</string>
     <string name="err_isAlreadyInitialized">La logique a déjà été initialisée</string>
     <string name="err_labelNotConnectedToNet_N">Un tunnel {0} n''est pas connecté!</string>
     <string name="err_moreThanOneClockFound">Il y a plus qu'une horloge</string>
-    <string name="err_clockIsNotUsed">La composante d'horloge n'est pas utilisée!</string>
+    <string name="err_clockIsNotUsed">Le composant d'horloge n'est pas utilisé!</string>
     <string name="err_needs_N0_bits_found_N2_bits">{0} bits sont requis, mais {1} bits ont été trouvés</string>
     <string name="err_netOfPin_N_notFound">Le réseau de la broche {0} n''a pas été trouvé</string>
     <string name="err_noClockFound">Aucune horloge trouvée dans la logique</string>
     <string name="err_noInputsAvailable">Aucune entrée disponible pour être changée</string>
-    <string name="err_noShapeFoundFor_N">Aucune forme trouvée pour la composante {0}</string>
-    <string name="err_noValueSetFor_N0_atElement_N1">Rien de connecté à l''entrée ''{0}'' à la composante ''{1}''. Les
+    <string name="err_noShapeFoundFor_N">Aucune forme trouvée pour le composant {0}</string>
+    <string name="err_noValueSetFor_N0_atElement_N1">Rien de connecté à l''entrée ''{0}'' à la composant ''{1}''. Les
         circuits ouverts ne sont pas permis.
     </string>
     <string name="err_notAllOutputsSameBits">Les sorties n'ont pas toutes le même nombre de bits</string>
@@ -1061,7 +1061,7 @@ In the file howTo.md you can find more details about translations.
     <string name="err_clockWithoutName">Une horloge sans étiquette a été trouvée. Si une horloge est intégrée, elle doit
         aussi avoir une étiquette.
     </string>
-    <string name="err_pin_N0_atElement_N1_notFound">La broche {0} n''a pas été trouvée à la composante {1}</string>
+    <string name="err_pin_N0_atElement_N1_notFound">La broche {0} n''a pas été trouvée au composant {1}</string>
     <string name="err_pin_N_notFound">La broche {0} n''a pas été trouvée</string>
     <string name="err_customShapeHasNoPin_N">La forme personnalisée ne définit pas une broche {0}.</string>
     <string name="err_pin_N_unknown">La broche {0} est inconnue</string>
@@ -1133,7 +1133,7 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="err_nameUsedTwice_N">Le signal {0} est utilisé deux fois!</string>
     <string name="err_errorParsingTestdata">Erreur lors de l'évaluation des données de test.</string>
-    <string name="err_backtrackOf_N_isImpossible">La composante modèle {0} n''a pas pu être analysée.</string>
+    <string name="err_backtrackOf_N_isImpossible">Le composant modèle {0} n''a pas pu être analysée.</string>
     <string name="err_errorInPowerSupply">Erreur de câblage de l''alimentation à {0}.</string>
     <string name="err_pinIsNotANumber_N">Le numéro de broche {0} n''est pas un entier!</string>
     <string name="err_vhdlExporting">Erreur lors de l'exportation en VHDL.</string>
@@ -1172,16 +1172,16 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="err_tableHasToManyResultColumns">La table a trop de colonnes!</string>
     <string name="err_errorExportingZip">Erreur lors de l'écriture du fichier ZIP.</string>
-    <string name="err_moreThanOneFastClock">Seulement une composante d'horloge avec haute fréquence est permise.
+    <string name="err_moreThanOneFastClock">Seulement un composant d'horloge avec haute fréquence est permise.
     </string>
     <string name="err_circuitHasCycles">Le circuit contient des cycles. Il n'est pas possible d'analyser un tel circuit.
         Les cycles surviennent si la sortie d'une porte se répercute dans une des entrées de la même porte.
         L'utilisation d'interrupteurs, de FETs ou de relais peut aussi causer des cycles.
     </string>
-    <string name="err_monoflopRequiresOneClock">Si une bascule monostable est utilisée, il doit y avoir exactement une
-        composante horloge!
+    <string name="err_monoflopRequiresOneClock">Si une bascule monostable est utilisée, il doit y avoir exactement un
+        composant horloge!
     </string>
-    <string name="err_couldNotCreateElement_N">Impossible de créer une composante de type {0}!</string>
+    <string name="err_couldNotCreateElement_N">Impossible de créer un composant de type {0}!</string>
     <string name="err_centralDefinedRomsAreNotSupported">La ROM définie dans les paramètres n'est pas prise en charge!
     </string>
     <string name="err_namesAreNotUnique_N">Le nom "{0}" n''est pas unique!</string>
@@ -1208,7 +1208,7 @@ In the file howTo.md you can find more details about translations.
     <string name="err_canOnlyExportExternalVHDL">Le code externe peut seulement être exporté si c'est du VHDL!</string>
     <string name="err_canOnlyExportExternalVerilog">Le code externe peut seulement être exporté si c'est du Verilog!
     </string>
-    <string name="err_ifExternalComponentIsUsedTwiceCodeMustBeIdentical_N">Si une composante externe est utilisée à de
+    <string name="err_ifExternalComponentIsUsedTwiceCodeMustBeIdentical_N">Si un composant externe est utilisé à de
         multiples reprises, le code doit être identique! Effets: {0}
     </string>
     <string name="err_writingToStdOut_O">Impossible d''écrire à la sortie standard (stdout):
@@ -1259,10 +1259,10 @@ In the file howTo.md you can find more details about translations.
     <string name="err_NameOfIOIsInvalidOrNotUnique_N">Le nom de signal "{0}" est invalide ou est utilisé à plusieurs
         reprises!
     </string>
-    <string name="err_substitutingError">Erreur lors de la substitution des composantes pour l'analyse.</string>
+    <string name="err_substitutingError">Erreur lors de la substitution des composants pour l'analyse.</string>
     <string name="err_evaluatingGenericsCode_N_N">Erreur lors de l''évaluation du code générique pour un circuit. Code
         {1}
-        à la composante: {0}
+        au composant: {0}
     </string>
     <string name="msg_errParsingGenerics">Erreur lors de l'évaluation du code générique.</string>
     <string name="err_vgaModeNotDetected_N">Le mode vidéo n''a pas été détecté ({0})</string>
@@ -1348,11 +1348,11 @@ In the file howTo.md you can find more details about translations.
     <string name="key_Value">Valeur</string>
     <string name="key_Value_tt">La valeur de la constante.</string>
     <string name="key_Width">Largeur</string>
-    <string name="key_Width_tt">Largeur du symbole si le circuit est utilisé comme une composante dans un autre
+    <string name="key_Width_tt">Largeur du symbole si le circuit est utilisé comme un composant dans un autre
         circuit.
     </string>
     <string name="key_Height">Hauteur</string>
-    <string name="key_Height_tt">Hauteur du symbole si le circuit est utilisé comme une composante dans un autre
+    <string name="key_Height_tt">Hauteur du symbole si le circuit est utilisé comme un composant dans un autre
         circuit.
     </string>
     <string name="key_autoReload">Recharger au début</string>
@@ -1389,7 +1389,7 @@ In the file howTo.md you can find more details about translations.
     <string name="key_rotation">Rotation</string>
     <string name="key_rotation_tt">L'orientation de l'élément dans le circuit.</string>
     <string name="key_mirror">Miroir</string>
-    <string name="key_mirror_tt">Reflète la composante dans le circuit.</string>
+    <string name="key_mirror_tt">Reflète le composant dans le circuit.</string>
     <string name="key_runRealTime">Partir l'horloge temps réel</string>
     <string name="key_runRealTime_tt">Si coché, l'horloge de temps d'exécution est partie quand le circuit débute.
     </string>
@@ -1485,8 +1485,8 @@ In the file howTo.md you can find more details about translations.
     <string name="key_pinCount_tt">Nombre de broches. Un zéro signifie que le nombre de broches est déterminé
         automatiquement.
     </string>
-    <string name="key_defTreeSelect">Afficher l'arborescence des composantes au démarrage.</string>
-    <string name="key_defTreeSelect_tt">Si coché, l'arborescence des composantes est affichée au démarrage.</string>
+    <string name="key_defTreeSelect">Afficher l'arborescence des composants au démarrage.</string>
+    <string name="key_defTreeSelect_tt">Si coché, l'arborescence des composants est affichée au démarrage.</string>
     <string name="key_inverterConfig">Entrées inversées</string>
     <string name="key_inverterConfig_tt">Sélectionner les entrées qui doivent être inversées.</string>
     <string name="key_fontSize">Taille de la police des menus [%]</string>
@@ -1503,10 +1503,10 @@ In the file howTo.md you can find more details about translations.
         Ainsi, ce mode est nécessaire pour simuler certains circuits CMOS.
     </string>
     <string name="key_activeLow">Actif bas</string>
-    <string name="key_activeLow_tt">Si coché, la sortie est basse lorsque la composante est active.</string>
+    <string name="key_activeLow_tt">Si coché, la sortie est basse lorsque le composant est actif.</string>
     <string name="key_libraryPath">Bibliothèque</string>
     <string name="key_libraryPath_tt">Dossier qui contient la bibliothèque avec des sous-circuits prédéfinis.
-        Contient par exemple les composantes de la série 74xx. Vous pouvez aussi ajouter vos propres circuits
+        Contient par exemple les composants de la série 74xx. Vous pouvez aussi ajouter vos propres circuits
         en les stockant à cet emplacement.
         Il faut s'assurer que le nom des fichiers dans ce dossier et ses sous-dossiers sont uniques.
     </string>
@@ -1520,7 +1520,7 @@ In the file howTo.md you can find more details about translations.
         Pour utiliser les touches de direction, utilisez UP, DOWN, LEFT ou RIGHT comme étiquette.
     </string>
     <string name="key_jarPath">Bibliothèque Java</string>
-    <string name="key_jarPath_tt">Un fichier JAR qui contient des composantes additionnelles implantées en Java.
+    <string name="key_jarPath_tt">Un fichier JAR qui contient des composants additionnels implémentés en Java.
     </string>
     <string name="key_showWireBits">Afficher le nombre de fils sur un bus.</string>
     <string name="key_showWireBits_tt">ATTENTION: La valeur est seulement mise à jour lorsque la simulation débute.
@@ -1568,14 +1568,14 @@ In the file howTo.md you can find more details about translations.
     <string name="key_ghdlPath">GHDL</string>
     <string name="key_ghdlPath_tt">Chemin du fichier ghdl exécutable. Seulement nécessaire si vous voulez utiliser ghdl
         pour
-        simuler des composantes définies avec VHDL.
+        simuler des composants définis avec VHDL.
     </string>
     <string name="key_ghdlOptions">Options GHDL</string>
     <string name="key_ghdlOptions_tt">Options utilisées pour les étapes de traitement par GHDL.</string>
     <string name="key_iverilogPath">IVerilog</string>
     <string name="key_iverilogPath_tt">Chemin du fichier exécutable d'Icarus Verilog. Seulement nécessaire si vous
         voulez utiliser
-        IVerilog pour simuler des composantes définies avec Verilog.
+        IVerilog pour simuler des composants définis avec Verilog.
     </string>
     <string name="key_maxValue">Valeur maximale</string>
     <string name="key_maxValue_tt">Si un zéro est entré, la valeur maximale est utilisée (tous les bits à un).</string>
@@ -1595,7 +1595,7 @@ In the file howTo.md you can find more details about translations.
     <string name="key_customShape">Forme personnalisée</string>
     <string name="key_customShape_tt">Importation d'un fichier SVG</string>
     <string name="key_preloadProgram">Précharger le mémoire de programme au démarrage.</string>
-    <string name="key_preloadProgram_tt">Lors de la simulation d'un processeur qui utilise une composante de RAM comme
+    <string name="key_preloadProgram_tt">Lors de la simulation d'un processeur qui utilise un composant RAM comme
         mémoire de programme,
         il est difficile de lancer le processeur parce que le contenu de la RAM est toujours initialisé avec des
         zéros au début de la simulation. Cette option permet de charger les données dans la mémoire de programme au
@@ -1649,7 +1649,7 @@ In the file howTo.md you can find more details about translations.
         la valeur à l'entrée N est utilisée pour changer le programme (l'instrument).
     </string>
     <string name="key_enabled">Activée</string>
-    <string name="key_enabled_tt">Active ou désactive cette composante.</string>
+    <string name="key_enabled_tt">Active ou désactive ce composant.</string>
     <string name="key_toolChainConfig">Configuration de la chaîne d'outils</string>
     <string name="key_toolChainConfig_tt">Sert à configurer l'intégration d'une chaîne d'outils.
         Permet d'exécuter des outils externes, par exemple pour programmer un FPGA ou autre.
@@ -1693,7 +1693,7 @@ In the file howTo.md you can find more details about translations.
         de la touche égal, par exemple sur les claviers américains et français.
     </string>
     <string name="key_snapToGrid">Aligner sur la grille</string>
-    <string name="key_snapToGrid_tt">Si coché, la composante reste alignée sur la grille.</string>
+    <string name="key_snapToGrid_tt">Si coché, le composant reste aligné sur la grille.</string>
     <string name="key_layoutShapeDelta">Séparateur de broche</string>
     <string name="key_layoutShapeDelta_tt">Utilisé par le type de forme "Disposition". Établit la distance avec la
         broche précédente.
@@ -1723,21 +1723,21 @@ In the file howTo.md you can find more details about translations.
     <string name="colorName_HIGHLIGHT">Surligné</string>
     <string name="mod_insertWire">Fil inséré.</string>
     <string name="mod_insertCopied">Insertion du presse-papier</string>
-    <string name="mod_setKey_N0_in_element_N1">Valeur ''{0}'' de la composante ''{1}'' modifiée</string>
-    <string name="mod_setAttributesIn_N">Attributs de la composante ''{0}'' modifiée.</string>
+    <string name="mod_setKey_N0_in_element_N1">Valeur ''{0}'' du composant ''{1}'' modifiée</string>
+    <string name="mod_setAttributesIn_N">Attributs du composant ''{0}'' modifiés.</string>
     <string name="mod_wireDeleted">Fil supprimé.</string>
-    <string name="mod_movedOrRotatedElement_N">Composante ''{0}'' déplacée ou pivotée.</string>
+    <string name="mod_movedOrRotatedElement_N">Composant ''{0}'' déplacée ou pivotée.</string>
     <string name="mod_movedWire">Fil déplacé.</string>
     <string name="mod_deletedSelection">Sélection supprimée.</string>
-    <string name="mod_insertedElement_N">Composante ''{0}'' insérée.</string>
-    <string name="mod_deletedElement_N">Composante ''{0}'' supprimée.</string>
+    <string name="mod_insertedElement_N">Composant ''{0}'' inséré.</string>
+    <string name="mod_deletedElement_N">Composant ''{0}'' supprimé.</string>
     <string name="mod_insertedWire">Fil inséré.</string>
     <string name="mod_movedSelected">Sélection déplacée.</string>
     <string name="mod_undo_N">Annuler: {0}</string>
     <string name="mod_redo_N">Rétablir: {0}</string>
     <string name="mod_circuitAttrModified">Attributs du circuit modifiés.</string>
     <string name="mod_modifiedMeasurementOrdering">Mesures réordonnées.</string>
-    <string name="mod_groupEdit">Attributs des composantes sélectionnées modifiées.</string>
+    <string name="mod_groupEdit">Attributs des composants sélectionnés modifiés.</string>
     <string name="mod_splitWire">Séparation d'un fil en deux fils.</string>
     <string name="lib_Logic">Logique</string>
     <string name="lib_arithmetic">Arithmétique</string>
@@ -1782,7 +1782,7 @@ In the file howTo.md you can find more details about translations.
     <string name="cli_help_svg_ieee">Utiliser les symboles IEEE.</string>
     <string name="cli_errorCreatingSVG">Erreur lors de la création du fichier SVG!</string>
     <string name="cli_help_stats">Créer un fichier CSV qui contient les statistiques du circuit.
-        Toutes les composantes sont listées dans le fichier CSV.
+        Tous les composants sont listées dans le fichier CSV.
     </string>
     <string name="cli_help_stats_dig">Nom de fichier du circuit.</string>
     <string name="cli_help_stats_csv">Nom du fichier CSV à créer.
@@ -1797,8 +1797,8 @@ In the file howTo.md you can find more details about translations.
     <string name="menu_copy">Copier</string>
     <string name="menu_custom">Personnalisé</string>
     <string name="menu_library">Bibliothèque</string>
-    <string name="menu_delete">Supprimer la composante</string>
-    <string name="menu_delete_tt">Supprime la composante ou le groupe de composantes sélectionnées</string>
+    <string name="menu_delete">Supprimer le composant</string>
+    <string name="menu_delete_tt">Supprime le composant ou le groupe de composants sélectionnés</string>
     <string name="menu_edit">Édition</string>
     <string name="menu_editAttributes">Paramètres spécifiques au circuit</string>
     <string name="menu_editAttributes_tt">Les paramètres spécifiques au circuit affectent le comportement du circuit
@@ -1813,18 +1813,18 @@ In the file howTo.md you can find more details about translations.
     </string>
     <string name="menu_element">Arrêter la simulation</string>
     <string name="menu_element_tt">Arrête la simulation et permet d'éditer le circuit.</string>
-    <string name="menu_elements">Composantes</string>
+    <string name="menu_elements">Composants</string>
     <string name="menu_export">Exporter</string>
     <string name="menu_exportPNGLarge">Exporter en PNG (large)</string>
     <string name="menu_exportPNGSmall">Exporter en PNG (petit)</string>
     <string name="menu_exportSVG">Exporter en SVG</string>
     <string name="menu_exportAnimatedGIF">Exporter en GIF animé</string>
     <string name="menu_fast">Exécuter jusqu'à une pause</string>
-    <string name="menu_fast_tt">Exécute le circuit jusqu'à qu'une pause est détectée sur une composante BRK.</string>
+    <string name="menu_fast_tt">Exécute le circuit jusqu'à qu'une pause est détectée sur un composant BRK.</string>
     <string name="menu_file">Fichier</string>
     <string name="menu_help">Aide</string>
     <string name="menu_update">Mettre à jour</string>
-    <string name="menu_update_tt">Met à jour le menu des composantes.</string>
+    <string name="menu_update_tt">Met à jour le menu des composants.</string>
     <string name="menu_maximize">Ajuster à la fenêtre</string>
     <string name="menu_micro">Mode pas-à-pas</string>
     <string name="menu_micro_tt">Lance le circuit en mode pas-à-pas</string>
@@ -1860,9 +1860,9 @@ In the file howTo.md you can find more details about translations.
     <string name="menu_step">Avancer d'un pas</string>
     <string name="menu_step_tt">Calcule le résultat d'un seul pas</string>
     <string name="menu_runToBreakMicro">Exécuter jusqu'à une pause en mode pas-à-pas</string>
-    <string name="menu_runToBreakMicro_tt">Exécute tous les pas du mode pas-à-pas jusqu'à qu'une composante de pause
+    <string name="menu_runToBreakMicro_tt">Exécute tous les pas du mode pas-à-pas jusqu'à qu'un composant de pause
         reçoive un front montant.
-        S'il n'y a pas de composante de pause, le reste de pas sont effectués.
+        S'il n'y a pas de composant de pause, le reste de pas sont effectués.
     </string>
     <string name="menu_synthesise">Synthèse</string>
     <string name="menu_synthesise_tt">Génère les expressions booléennes minimales décrites par une table de vérité.
@@ -1953,16 +1953,16 @@ In the file howTo.md you can find more details about translations.
         du fusible est perdu!
     </string>
     <string name="menu_programDiode">Programmer la diode</string>
-    <string name="menu_help_elements">Composantes</string>
-    <string name="menu_help_elements_tt">Affiche une liste des composantes disponibles.</string>
+    <string name="menu_help_elements">Composants</string>
+    <string name="menu_help_elements_tt">Affiche une liste des composants disponibles.</string>
     <string name="menu_viewHelp">Dialogue d'aide</string>
     <string name="menu_viewHelp_tt">Affiche le dialogue d'aide qui décrit le circuit actuel.</string>
     <string name="menu_probe_memory">Mémoire</string>
-    <string name="menu_probe_memory_tt">Affiche le contenu des composantes de mémoire</string>
+    <string name="menu_probe_memory_tt">Affiche le contenu des composants de mémoire</string>
     <string name="menu_insertAsNew">Coller dans une nouvelle fenêtre</string>
     <string name="menu_insertAsNew_tt">Le contenu du presse-papier est collé dans une nouvelle fenêtre.</string>
-    <string name="menu_treeSelect">Arborescence des composantes</string>
-    <string name="menu_treeSelect_tt">Affiche l'arborescence des composantes disponibles sur le côté gauche.</string>
+    <string name="menu_treeSelect">Arborescence des composants</string>
+    <string name="menu_treeSelect_tt">Affiche l'arborescence des composants disponibles sur le côté gauche.</string>
     <string name="menu_special">Fonctions 74xx spéciales</string>
     <string name="menu_addPrefix">Ajouter un préfixe E/S</string>
     <string name="menu_addPrefix_tt">Un préfixe est ajouté pour toutes les entrées et sorties sélectionnées.
@@ -2010,9 +2010,9 @@ In the file howTo.md you can find more details about translations.
     <string name="menu_tutorial">Commencer le tutoriel</string>
     <string name="menu_tutorial_tt">Lance le tutoriel pour débutants</string>
     <string name="menu_stats">Statistiques du circuit</string>
-    <string name="menu_stats_tt">Affiche une liste des composantes utilisées.</string>
+    <string name="menu_stats_tt">Affiche une liste des composants utilisés.</string>
     <string name="stat_number">Nombre</string>
-    <string name="stat_part">Composante</string>
+    <string name="stat_part">Composant</string>
     <string name="stat_inputs">Entrées</string>
     <string name="stat_bits">Bits</string>
     <string name="stat_addrBits">Bits d'addr.</string>
@@ -2038,7 +2038,7 @@ In the file howTo.md you can find more details about translations.
     <string name="msg_errorDuringHardwareExport">Erreur durant la création de la configuration matérielle.</string>
     <string name="msg_errorEditingValue">Erreur lors de l'édition de la valeur d'un attribut.</string>
     <string name="msg_errorImportingModel_N0">Erreur lors de l''importation du circuit {0}!</string>
-    <string name="msg_errorUpdatingLibrary">Erreur lors de la mise à jour de la bibliothèque de composantes!!</string>
+    <string name="msg_errorUpdatingLibrary">Erreur lors de la mise à jour de la bibliothèque de composants!!</string>
     <string name="msg_errorReadingFile">Erreur lors de la lecture d'un fichier</string>
     <string name="msg_remoteUnknownCommand">La commande {0} est inconnue!</string>
     <string name="msg_errorWritingFile">Erreur lors de l'écriture d'un fichier</string>
@@ -2080,7 +2080,7 @@ In the file howTo.md you can find more details about translations.
     <string name="msg_fileExists">Le fichier {0} existe déjà. Voulez-vous remplacer le fichier?</string>
     <string name="msg_isLocked">L''édition de ce circuit est désactivée. Vous pouvez désactiver le verrouillage avec
         "{0} -&gt; {1} -&gt; {2}".
-        Cependant, en mode verrouillage, il est toujours possible de copier des composantes ou configurer des diodes et
+        Cependant, en mode verrouillage, il est toujours possible de copier des composants ou configurer des diodes et
         des FGFETs avec la touche [P]
     </string>
     <string name="msg_speedTestError">Erreur durant le test de vitesse!</string>
@@ -2097,7 +2097,7 @@ In the file howTo.md you can find more details about translations.
     <string name="msg_none">aucun</string>
     <string name="msg_errGettingPinNames">Impossible de déterminer le nom des broches.</string>
     <string name="msg_errInFile_N">A eu lieu dans le fichier {0}.</string>
-    <string name="msg_affectedComponentsAre_N">Les composantes affectées sont: {0}.</string>
+    <string name="msg_affectedComponentsAre_N">Les composants affectés sont: {0}.</string>
     
     <string name="msg_thereAreMissingPinNumbers">Aucun numéro de broche assigné aux broches {0}!
         Les broches libres sont automatiquement assignées. Ainsi, dans la plupart des cas, le circuit ne peut
@@ -2191,7 +2191,7 @@ In the file howTo.md you can find more details about translations.
     <string name="win_romDialogHelpTitle">Contenu de la ROM centrale</string>
     <string name="msg_romDialogHelp">&lt;html&gt;
         &lt;h3&gt;Motivation&lt;/h3&gt;
-        Quand un circuit qui contient une composante de ROM est intégré de multiple fois, le contenu de la ROM
+        Quand un circuit qui contient un composant ROM est intégré de multiple fois, le contenu de la ROM
         est normalement utilisé pour chaque instance de ce circuit. Dans des certaines circonstances toutefois,
         il peut être désirable pour un tel circuit d'être intégré de multiples fois,
         mais avec un contenu différent de la ROM pour chaque instance.&lt;br/&gt;
@@ -2205,9 +2205,9 @@ In the file howTo.md you can find more details about translations.
         Il devrait être noté que chaque ROM nécessite un nom unique pour être identifiée.
         Pour ce faire, utilisez l'astérisque ('*') pour étiqueter la ROM. L'astérisque est ensuite remplacé par le
         chemin complet construit à partir des noms des circuits intégrés.
-        Si un circuit contient une seule composante ROM, il est suffisant d'utiliser seulement l'astérisque
+        Si un circuit contient un seul composant ROM, il est suffisant d'utiliser seulement l'astérisque
         pour l'identifier.
-        Tous les circuits intégrés doivent être nommés pour qu'un nom unique soit formé pour chaque composante de ROM.
+        Tous les circuits intégrés doivent être nommés pour qu'un nom unique soit formé pour chaque composant ROM.
         &lt;/html&gt;
     </string>
     <string name="msg_newRelease_N">&lt;html&gt;
@@ -2376,7 +2376,7 @@ Il existe trois instructions permettant d'initialiser le processeur:&lt;/p&gt;
 &lt;li&gt;L'énoncé 'program' permet de remplacer la mémoire de programme du processeur.
 Par exemple, l'instruction &lt;pre&gt;program(0x8000,0x2d11,0x8000,0x2f21)&lt;/pre&gt; écrit quatre mots au début de la mémoire
 de programme. Tous les autres mots sont mis à zéro.&lt;/li&gt;
-&lt;li&gt;L'énoncé 'memory' permet d'écrire dans une composante de RAM:
+&lt;li&gt;L'énoncé 'memory' permet d'écrire dans un composant RAM:
 &lt;pre&gt;memory mem(3)=7;&lt;/pre&gt;
 Cette exemple écrit 7 à l'adresse 3 de la mémoire avec l'étiquette 'mem'.&lt;/li&gt;
 &lt;li&gt;La valeur d'un registre avec une étiquette peut être changé avec l'énoncé 'init'.
@@ -2491,20 +2491,20 @@ ligne d'en-tête utilisée pour spécifier les signaux testés.&lt;/p&gt;
     <string name="tutorial">Tutoriel</string>
     <string name="tutorial1">Ce court tutoriel vous amenera à créer un premier circuit simple:
 
-        D'abord, insérez une entrée dans le circuit. Vous trouvez l'entrée dans le menu Composantes▸E/S
+        D'abord, insérez une entrée dans le circuit. Vous trouvez l'entrée dans le menu Composants▸E/S
     </string>
     <string name="tutorial2">Maintenant, ajoutez une deuxième entrée au circuit. Vous pouvez aussi cliquer sur l'entrée
         qui est apparue dans la barre d'outils.
 
         Il vaut mieux placer la deuxième entrée légèrement plus bas que la première.
         Vous pouvez bouger le circuit en tenant le bouton droit de la souris.
-        En cliquant sur les composantes, vous pouvez les déplacer.
+        En cliquant sur les composants, vous pouvez les déplacer.
     </string>
     <string name="tutorial3">Ensuite, une porte "Ou Exclusif", aussi appelée "XOR", doit être insérée.
-        Vous pouvez trouver cette porte dans le menu Composantes▸Logique.
-        Placez cette composante à une certaine distance à droite des entrées.
+        Vous pouvez trouver cette porte dans le menu Composants▸Logique.
+        Placez ce composant à une certaine distance à droite des entrées.
     </string>
-    <string name="tutorial4">La dernière composante à insérer est une sortie.
+    <string name="tutorial4">Le dernier composant à insérer est une sortie.
         Placez-la encore une fois à une certaine distance à droite de la porte "Ou Exclusif".
     </string>
     <string name="tutorial5">Afin de compléter le circuit, des fils de connexion doivent être dessinés.
@@ -2537,14 +2537,14 @@ ligne d'en-tête utilisée pour spécifier les signaux testés.&lt;/p&gt;
     <string name="tutorialNotNeeded">Ignorer le tutoriel</string>
     <string name="elem_GenericInitCode">Initialisation générique</string>
     <string name="elem_GenericInitCode_tt">Code qui est exécuté pour simuler un circuit générique directement.
-        Cette composante est requise si un circuit générique doit être simulé directement.
+        Ce composant est requise si un circuit générique doit être simulé directement.
     </string>
     <string name="err_hdlTestCaseHasGenericCode">Les tests avec une paramétrisation générique ne sont pas pris en charge
         lors de l'exportation HDL!
     </string>
-    <string name="err_noGenericInitCode">Aucun code d'initialisation trouvé pour les composantes génériques.
-        Cette composante doit être ajoutée au circuit pour pouvoir le simuler.</string>
-    <string name="err_multipleGenericInitCodes">Plusieurs codes d'initialisation ont été trouvés pour les composantes
+    <string name="err_noGenericInitCode">Aucun code d'initialisation trouvé pour les composants génériques.
+        Ce composant doit être ajoutée au circuit pour pouvoir le simuler.</string>
+    <string name="err_multipleGenericInitCodes">Plusieurs codes d'initialisation ont été trouvés pour les composants
         génériques, il n'en faut qu'un seul.
     </string>
     <string name="err_inGenericInitCode">Erreur lors de l'analyze du code d'initialisation générique.</string>
@@ -2562,17 +2562,17 @@ ligne d'en-tête utilisée pour spécifier les signaux testés.&lt;/p&gt;
         déclenchement stocke la valeur des signaux affichés à un moment donné.
         La seule entrée directe est celle du déclenchement. Les entrées les sorties du circuit, les bascules, les
         registres et les sondes peuvent être utilisés comme signaux. Cela peut être activé dans les paramétres de
-        chacune de ces composantes.</string>
+        chacune de ces composants.</string>
     <string name="elem_ScopeTrigger_pin_T">Un changement à cette entrée provoque le stockage des valeurs mesurées</string>
     <string name="elem_NotConnected">Pas connecté</string>
-    <string name="elem_NotConnected_tt">Cette composante peut être utilisée pour mettre un fil en état de haute impédance.
+    <string name="elem_NotConnected_tt">Ce composant peut être utilisée pour mettre un fil en état de haute impédance.
         Si l'entrée d'une porte logique est mise à haute impédance, la valeur lue est indéfinie.
         À noter qu'en réalité, dans plusieurs situations, cet état de haute impédance tend à
-        endommager les composantes ou à causer une consommation excessive de courant.</string>
+        endommager les composants ou à causer une consommation excessive de courant.</string>
     <string name="elem_NotConnected_pin_out">Cette sortie émet toujours l'état hi-Z.</string>
     <string name="err_notConnectedNotAllowed">Le symbole "Pas connecté" n'est pas permis ici!</string>
     <string name="elem_ROMDualPort">ROM, ports séparés</string>
-    <string name="elem_ROMDualPort_tt">Une composante de mémoire non volatile.
+    <string name="elem_ROMDualPort_tt">Un composant de mémoire non volatile.
       Les données stockées peuvent être éditées dans le dialog d'attributs.</string>
     <string name="elem_ROMDualPort_pin_A1">Cette entrée définie l'adresse du mot qui sera émis sur D1.</string>
     <string name="elem_ROMDualPort_pin_D1">Le mot sélectionné si l'entrée s1 est haute.</string>
@@ -2593,7 +2593,7 @@ ligne d'en-tête utilisée pour spécifier les signaux testés.&lt;/p&gt;
     <string name="elem_PRNG_pin_C">Signal d'horloge</string>
     <string name="elem_PRNG_pin_R">Émet un nombre pseudo-aléatoire.</string>
     <string name="elem_GenericCode_tt">Code qui est exécuté lorsqu'un circuit générique est rendu concret.
-        Peut être utilisé, par exemple, pour ajouter des composantes ou des fils au circuit.</string>
+        Peut être utilisé, par exemple, pour ajouter des composants ou des fils au circuit.</string>
     <string name="err_multipleRomsFound">Plusieurs mémoires de programme trouvées! Une seule est permise.</string>
     <string name="err_noMemoryFound">Aucune mémoire "{0}" n''a été trouvée dans le circuit!</string>
     <string name="err_multipleMemoriesFound">Plusieurs mémoires "{0}" trouvées dans le circuit!</string>
@@ -2624,7 +2624,7 @@ ligne d'en-tête utilisée pour spécifier les signaux testés.&lt;/p&gt;
     <string name="elem_RAMAsync_pin_Q">La valeur de sortie</string>
     <string name="elem_PRNG_short">PRNG</string>
     <string name="elem_GenericCode">Code</string>
-    <string name="err_writeInCodeComponentsOnly">Les variables globales peuvent seulement être écrites dans les composantes Code.</string>
+    <string name="err_writeInCodeComponentsOnly">Les variables globales peuvent seulement être écrites dans les composants Code.</string>
     <string name="err_csvNoHeaderFound">Pas d'en-tête trouvée!</string>
     <string name="err_csvNoOutputValuesFound">Aucune valeur de sortie trouvée!</string>
     <string name="err_csvNotEnoughValues">Pas assez de valeurs sur une des lignes!</string>
@@ -2662,15 +2662,15 @@ ligne d'en-tête utilisée pour spécifier les signaux testés.&lt;/p&gt;
     <string name="elem_Telnet_pin_rd">Si cette entrée est active, l'octet reçu est émis.</string>
     <string name="elem_VGA_short">VGA</string>
     <string name="elem_ExternalFile">Fichier externe</string>
-    <string name="elem_ExternalFile_tt">Une composante qui exécute un processus externe pour calculer la fonction logique.
-        Peut être utilisé pour spécifier le comportement d'une composante en VHDL ou en Verilog.
+    <string name="elem_ExternalFile_tt">Un composant qui exécute un processus externe pour calculer la fonction logique.
+        Peut être utilisé pour spécifier le comportement d'un composant en VHDL ou en Verilog.
         La simulation du comportement en tant que telle doit être faite avec un simulateur externe.
         À l'heure actuelle, seuls le simulateur de VHDL ghdl et le simulateur de Verilog Icarus Verilog sont pris en charge.
-        L'étiquette de la composante doit correspondre au nom de l'entité ou du module!</string>
+        L'étiquette du composant doit correspondre au nom de l'entité ou du module!</string>
     <string name="err_errorLoadingHDLFile_N">Erreur lors du chargement du fichier HDL {0}</string>
     <string name="err_emptyLabelIsNotAllowed">Une étiquette vide n'est pas permise!</string>
     <string name="err_errorWritingFile_N">Erreur lors de l''écriture du fichier {0}</string>
-    <string name="err_circuitContainsNoComponents">Ce circuit ne contient aucune composante!</string>
+    <string name="err_circuitContainsNoComponents">Ce circuit ne contient aucun composant!</string>
     <string name="err_couldNotCreateServer">Impossible de lancer le serveur!</string>
     <string name="key_small">Forme petite</string>
     <string name="key_small_tt">Si coché, une forme plus petite sera utilisée.</string>
