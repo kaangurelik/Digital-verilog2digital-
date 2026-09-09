@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/rpc-request",
+  "title": "Verilog to Digital rpc-request version 1",
+  "type": "object",
+  "required": [
+    "jsonrpc",
+    "id",
+    "method",
+    "params"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "jsonrpc": {
+      "const": "2.0"
+    },
+    "id": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      ]
+    },
+    "method": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "enum": ["capabilities", "component.catalog", "component.describe", "layout.plan", "circuit.emit", "circuit.inspect", "circuit.render", "circuit.simulate", "circuit.simulate_cycles"]
+    },
+    "params": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/circuit",
+  "title": "Verilog to Digital circuit version 1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "instances",
+    "wires"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "label": {"type": "string", "maxLength": 512},
+    "schema_version": {
+      "const": 1
+    },
+    "instances": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "items": {
+        "$ref": "#/$defs/instance"
+      }
+    },
+    "wires": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": {
+        "$ref": "#/$defs/wire"
+      }
+    }
+  },
+  "$defs": {
+    "instance": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "attributes",
+        "position"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "attributes": {
+          "type": "object",
+          "maxProperties": 64,
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          }
+        },
+        "position": {
+          "type": "object",
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000,
+              "multipleOf": 10
+            },
+            "y": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000,
+              "multipleOf": 10
+            }
+          }
+        },
+        "rotation": {
+          "enum": [
+            0,
+            90,
+            180,
+            270
+          ]
+        }
+      }
+    },
+    "wire": {
+      "type": "object",
+      "required": [
+        "from",
+        "to"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "object",
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000,
+              "multipleOf": 10
+            },
+            "y": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000,
+              "multipleOf": 10
+            }
+          }
+        },
+        "to": {
+          "type": "object",
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000,
+              "multipleOf": 10
+            },
+            "y": {
+              "type": "integer",
+              "minimum": -1000000,
+              "maximum": 1000000,
+              "multipleOf": 10
+            }
+          }
+        },
+        "net_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    }
+  }
+}

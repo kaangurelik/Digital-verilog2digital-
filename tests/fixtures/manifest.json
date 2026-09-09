@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "phase0_and",
+      "source": "verilog/smoke.v",
+      "top": "smoke",
+      "reference_testbench": "verilog/smoke_tb.v",
+      "expected": "All four binary input combinations match AND",
+      "coverage": "exhaustive",
+      "phase": 0
+    }
+  ]
+}
