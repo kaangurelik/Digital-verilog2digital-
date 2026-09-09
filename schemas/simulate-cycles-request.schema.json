@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/simulate-cycles-request",
+  "title": "Native single-clock sequential simulation request",
+  "type": "object", "additionalProperties": false,
+  "required": ["path", "sidecar_path", "clock_instance_id", "initialization", "cycles"],
+  "properties": {
+    "package": {"$ref": "#/$defs/package"},
+    "path": {"type": "string", "minLength": 1, "maxLength": 16384},
+    "sidecar_path": {"type": "string", "minLength": 1, "maxLength": 16384},
+    "clock_instance_id": {"$ref": "#/$defs/id"},
+    "initialization": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "cycles"],
+      "properties": {
+        "kind": {"const": "input_sequence"},
+        "cycles": {"type": "array", "minItems": 1, "maxItems": 256, "items": {"$ref": "#/$defs/cycle"}}
+      }
+    },
+    "cycles": {"type": "array", "minItems": 1, "maxItems": 1024, "items": {"$ref": "#/$defs/cycle"}}
+  },
+  "$defs": {
+    "package": {
+      "type": "object", "additionalProperties": false, "required": ["root", "modules"],
+      "properties": {
+        "root": {"type": "string", "minLength": 1, "maxLength": 16384},
+        "modules": {
+          "type": "array", "maxItems": 64,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["type", "sha256", "sidecar_sha256"],
+            "properties": {
+              "type": {"type": "string", "pattern": "^m_[0-9a-f]{24}\\.dig$"},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "sidecar_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
+    "hex": {"type": "string", "pattern": "^0[xX][0-9a-fA-F]{1,16}$"},
+    "cycle": {
+      "type": "object", "additionalProperties": false, "required": ["values"],
+      "properties": {
+        "values": {
+          "type": "object", "maxProperties": 1024, "propertyNames": {"$ref": "#/$defs/id"},
+          "additionalProperties": {"$ref": "#/$defs/hex"}
+        }
+      }
+    }
+  }
+}

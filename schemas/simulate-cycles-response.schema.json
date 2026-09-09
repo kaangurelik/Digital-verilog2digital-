@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/simulate-cycles-response",
+  "title": "Native observed sequential phases and explicit startup assumptions",
+  "$comment": "The native service does not prove that an input prefix establishes HDL state. The independent frontend/reference initialization proof must pass before these samples can establish a conversion result.",
+  "type": "object", "additionalProperties": false, "required": ["schema_version", "samples", "assumptions"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "samples": {"type": "array", "minItems": 3, "maxItems": 3072, "items": {"$ref": "#/$defs/sample"}},
+    "assumptions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile", "clock_instance_id", "initial_clock", "phase_order", "input_application", "state_updates", "noise", "initialization"],
+      "properties": {
+        "profile": {"const": "single_clock_rising_v1"},
+        "clock_instance_id": {"$ref": "#/$defs/id"},
+        "initial_clock": {"const": "0x0"},
+        "phase_order": {"const": ["before_rise", "after_rise", "after_fall"]},
+        "input_application": {"const": "settled_while_clock_low"},
+        "state_updates": {"const": "simultaneous"},
+        "noise": {"const": false},
+        "initialization": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "prefix_cycles", "internal_state_forcing", "native_defaults"],
+          "properties": {
+            "kind": {"const": "input_sequence"},
+            "prefix_cycles": {"type": "integer", "minimum": 1, "maximum": 256},
+            "internal_state_forcing": {"const": false},
+            "native_defaults": {"$ref": "#/$defs/values"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
+    "hex": {"type": "string", "pattern": "^0x[0-9a-f]{1,16}$"},
+    "values": {
+      "type": "object", "minProperties": 1, "maxProperties": 1024,
+      "propertyNames": {"$ref": "#/$defs/id"}, "additionalProperties": {"$ref": "#/$defs/hex"}
+    },
+    "sample": {
+      "type": "object", "additionalProperties": false, "required": ["cycle", "phase", "values", "high_z"],
+      "properties": {
+        "cycle": {"type": "integer", "minimum": 0, "maximum": 1023},
+        "phase": {"enum": ["before_rise", "after_rise", "after_fall"]},
+        "values": {"$ref": "#/$defs/values"}, "high_z": {"$ref": "#/$defs/values"}
+      }
+    }
+  }
+}
