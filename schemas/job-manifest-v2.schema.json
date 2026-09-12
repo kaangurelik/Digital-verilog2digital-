@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v2/job-manifest",
+  "type": "object", "additionalProperties": true,
+  "required": ["schema_version", "job_id", "kind", "state", "stage", "event_seq", "created_utc", "updated_utc", "request", "resources", "artifacts", "diagnostics"],
+  "properties": {
+    "schema_version": {"const": 2}, "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "kind": {"enum": ["convert", "inspect", "validate"]},
+    "state": {"enum": ["created", "running", "ready", "failed", "cancelled", "interrupted"]},
+    "stage": {"type": "string", "minLength": 1, "maxLength": 128},
+    "event_seq": {"type": "integer", "minimum": 0},
+    "created_utc": {"type": "string"}, "updated_utc": {"type": "string"},
+    "request": {"type": "object"}, "resources": {"type": "object"}, "artifacts": {"type": "object"},
+    "diagnostics": {"type": "array", "maxItems": 64, "items": {"type": "object", "required": ["code", "message"]}}
+  }
+}

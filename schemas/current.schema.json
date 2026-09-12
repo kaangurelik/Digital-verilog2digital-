@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v2/current",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "state", "job_id", "revision", "manifest_sha256", "published_utc"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "state": {"const": "ready"},
+    "job_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "revision": {"type": "string", "pattern": "^revisions/[0-9a-f]{32}$"},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "published_utc": {"type": "string", "minLength": 20, "maxLength": 40}
+  }
+}

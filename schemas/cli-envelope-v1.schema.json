@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/cli-envelope",
+  "oneOf": [
+    {"type":"object","additionalProperties":false,"required":["schema_version","type","event"],
+     "properties":{"schema_version":{"const":1},"type":{"const":"progress"},"event":{"type":"object"}}},
+    {"type":"object","additionalProperties":false,"required":["schema_version","type","result"],
+     "properties":{"schema_version":{"const":1},"type":{"enum":["result","error"]},"result":{"type":"object"}}}
+  ]
+}
