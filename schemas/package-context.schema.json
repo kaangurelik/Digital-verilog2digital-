@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/package-context",
+  "title": "Hash-bound local generated Digital module package",
+  "type": "object", "additionalProperties": false, "required": ["root", "modules"],
+  "properties": {
+    "root": {"type": "string", "minLength": 1, "maxLength": 16384},
+    "modules": {
+      "type": "array", "maxItems": 64,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["type", "sha256", "sidecar_sha256"],
+        "properties": {
+          "type": {"type": "string", "pattern": "^m_[0-9a-f]{24}\\.dig$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "sidecar_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

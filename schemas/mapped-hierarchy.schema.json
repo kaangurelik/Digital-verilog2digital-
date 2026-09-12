@@ -1,0 +1,726 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/mapped-hierarchy",
+  "title": "One specialized hierarchical module with explicit child interfaces",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profile",
+    "top",
+    "instances",
+    "descriptors",
+    "nets",
+    "inputs",
+    "outputs",
+    "origins",
+    "pin_bindings",
+    "registers",
+    "module_id",
+    "children",
+    "child_types"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "profile": {
+      "const": "hierarchy-v1"
+    },
+    "top": {
+      "$ref": "#/$defs/name"
+    },
+    "instances": {
+      "type": "array",
+      "maxItems": 250,
+      "items": {
+        "$ref": "#/$defs/instance"
+      }
+    },
+    "descriptors": {
+      "type": "array",
+      "maxItems": 250,
+      "items": {
+        "$ref": "#/$defs/descriptor"
+      }
+    },
+    "nets": {
+      "type": "array",
+      "maxItems": 16384,
+      "items": {
+        "$ref": "#/$defs/net"
+      }
+    },
+    "inputs": {
+      "type": "array",
+      "maxItems": 250,
+      "items": {
+        "$ref": "#/$defs/port"
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "maxItems": 250,
+      "items": {
+        "$ref": "#/$defs/port"
+      },
+      "minItems": 1
+    },
+    "origins": {
+      "type": "array",
+      "maxItems": 250,
+      "items": {
+        "$ref": "#/$defs/origin"
+      }
+    },
+    "pin_bindings": {
+      "type": "array",
+      "maxItems": 16384,
+      "items": {
+        "$ref": "#/$defs/binding"
+      }
+    },
+    "registers": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 250,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "cell_id",
+          "width",
+          "d_bits",
+          "q_bits"
+        ],
+        "properties": {
+          "instance_id": {
+            "$ref": "#/$defs/id"
+          },
+          "cell_id": {
+            "$ref": "#/$defs/id"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "d_bits": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/$defs/bit"
+            }
+          },
+          "q_bits": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/$defs/bit"
+            }
+          }
+        }
+      }
+    },
+    "module_id": {
+      "type": "string",
+      "pattern": "^m_[0-9a-f]{24}$"
+    },
+    "child_types": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "module_id",
+          "type",
+          "sha256",
+          "ports"
+        ],
+        "properties": {
+          "module_id": {
+            "$ref": "#/properties/module_id"
+          },
+          "type": {
+            "type": "string",
+            "pattern": "^m_[0-9a-f]{24}\\.dig$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "ports": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 250,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "direction",
+                "width"
+              ],
+              "properties": {
+                "name": {
+                  "$ref": "#/$defs/name"
+                },
+                "direction": {
+                  "enum": [
+                    "input",
+                    "output"
+                  ]
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "children": {
+      "type": "array",
+      "maxItems": 250,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instance_id",
+          "module_id",
+          "type",
+          "native_name",
+          "ports",
+          "port_directions",
+          "source",
+          "hierarchy"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "pattern": "^u[0-9]{4}$"
+          },
+          "module_id": {
+            "$ref": "#/properties/module_id"
+          },
+          "type": {
+            "type": "string",
+            "pattern": "^m_[0-9a-f]{24}\\.dig$"
+          },
+          "native_name": {
+            "$ref": "#/$defs/name"
+          },
+          "ports": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 250,
+            "additionalProperties": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 64,
+              "items": {
+                "$ref": "#/$defs/bit"
+              }
+            }
+          },
+          "port_directions": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "input",
+                "output"
+              ]
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "hierarchy": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"
+    },
+    "component": {
+      "oneOf": [
+        {
+          "enum": [
+            "In",
+            "Out",
+            "Const",
+            "Not",
+            "And",
+            "Or",
+            "XOr",
+            "XNOr",
+            "Multiplexer",
+            "Add",
+            "Sub",
+            "Comparator",
+            "Splitter",
+            "BarrelShifter",
+            "D_FF"
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^m_[0-9a-f]{24}\\.dig$"
+        }
+      ]
+    },
+    "attributes": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": {
+        "type": [
+          "string",
+          "integer",
+          "boolean"
+        ]
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "y": {
+          "type": "integer",
+          "minimum": -1000000,
+          "maximum": 1000000
+        }
+      }
+    },
+    "origin_position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer",
+          "const": 0
+        },
+        "y": {
+          "type": "integer",
+          "const": 0
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/$defs/point"
+        },
+        "max": {
+          "$ref": "#/$defs/point"
+        }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "attributes",
+        "position",
+        "rotation"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "$ref": "#/$defs/component"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "position": {
+          "$ref": "#/$defs/origin_position"
+        },
+        "rotation": {
+          "type": "integer",
+          "const": 0
+        }
+      }
+    },
+    "pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "direction",
+        "pin",
+        "width",
+        "position",
+        "escape"
+      ],
+      "properties": {
+        "direction": {
+          "enum": [
+            "input",
+            "output"
+          ]
+        },
+        "pin": {
+          "$ref": "#/$defs/name"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "position": {
+          "$ref": "#/$defs/point"
+        },
+        "escape": {
+          "$ref": "#/$defs/point"
+        }
+      }
+    },
+    "descriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "id",
+        "type",
+        "attributes",
+        "position",
+        "rotation",
+        "pins",
+        "bounds",
+        "body_bounds",
+        "unsupported_attributes"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "$ref": "#/$defs/component"
+        },
+        "attributes": {
+          "$ref": "#/$defs/attributes"
+        },
+        "position": {
+          "$ref": "#/$defs/origin_position"
+        },
+        "rotation": {
+          "type": "integer",
+          "const": 0
+        },
+        "pins": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 65,
+          "items": {
+            "$ref": "#/$defs/pin"
+          }
+        },
+        "bounds": {
+          "$ref": "#/$defs/bounds"
+        },
+        "body_bounds": {
+          "$ref": "#/$defs/bounds"
+        },
+        "unsupported_attributes": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "splitter_bindings": {
+          "type": "array",
+          "maxItems": 65,
+          "items": {
+            "$ref": "#/$defs/split_binding"
+          }
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "direction",
+        "pin"
+      ],
+      "properties": {
+        "instance_id": {
+          "$ref": "#/$defs/id"
+        },
+        "direction": {
+          "enum": [
+            "input",
+            "output"
+          ]
+        },
+        "pin": {
+          "$ref": "#/$defs/name"
+        }
+      }
+    },
+    "net": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "width",
+        "bits",
+        "endpoints"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "bit": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 2147483647
+            },
+            {
+              "enum": [
+                "0",
+                "1"
+              ]
+            }
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "endpoints": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16384,
+          "items": {
+            "$ref": "#/$defs/endpoint"
+          }
+        },
+        "bits": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/bit"
+          }
+        }
+      }
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "port",
+        "instance_id",
+        "width"
+      ],
+      "properties": {
+        "port": {
+          "$ref": "#/$defs/name"
+        },
+        "instance_id": {
+          "$ref": "#/$defs/id"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      }
+    },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "kind",
+        "source"
+      ],
+      "properties": {
+        "instance_id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "port",
+            "cell",
+            "constant",
+            "helper",
+            "child"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "port": {
+          "$ref": "#/$defs/name"
+        },
+        "cell_id": {
+          "$ref": "#/$defs/id"
+        },
+        "native_name": {
+          "$ref": "#/$defs/name"
+        },
+        "hierarchy": {
+          "type": "string"
+        },
+        "value": {
+          "enum": [
+            "0",
+            "1"
+          ]
+        },
+        "owner": {
+          "$ref": "#/$defs/id"
+        },
+        "purpose": {
+          "$ref": "#/$defs/name"
+        },
+        "module_id": {
+          "$ref": "#/properties/module_id"
+        }
+      }
+    },
+    "bit": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 2147483647
+        },
+        {
+          "enum": [
+            "0",
+            "1"
+          ]
+        }
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "instance_id",
+        "direction",
+        "pin",
+        "width",
+        "bits"
+      ],
+      "properties": {
+        "instance_id": {
+          "$ref": "#/$defs/id"
+        },
+        "direction": {
+          "enum": [
+            "input",
+            "output"
+          ]
+        },
+        "pin": {
+          "$ref": "#/$defs/name"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "bits": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/bit"
+          }
+        }
+      }
+    },
+    "split_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "direction",
+        "pin",
+        "offset",
+        "width"
+      ],
+      "properties": {
+        "direction": {
+          "enum": [
+            "input",
+            "output"
+          ]
+        },
+        "pin": {
+          "$ref": "#/$defs/name"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 63
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        }
+      }
+    }
+  }
+}
