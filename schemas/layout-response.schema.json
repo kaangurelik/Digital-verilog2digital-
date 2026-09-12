@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog2digital.local/schemas/v1/layout-response",
+  "title": "Native placements and unvalidated ELK route hints",
+  "$comment": "Only placements and ports are authoritative geometry. Wires are grid-rounded hints, may be disconnected after placement snapping, and require independent routing and geometry/topology validation before publication.",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "strategy", "elk_version", "seed", "placement_grid", "wire_grid", "proposal_only", "placements", "wires", "ports", "envelopes", "diagnostics"],
+  "properties": {
+    "schema_version": {"type": "integer", "const": 1},
+    "strategy": {"const": "elk-layered-v1"},
+    "elk_version": {"const": "0.12.0"},
+    "seed": {"type": "integer", "const": 1},
+    "placement_grid": {"type": "integer", "const": 20},
+    "wire_grid": {"type": "integer", "const": 10},
+    "proposal_only": {"const": true},
+    "placements": {"type": "array", "minItems": 1, "maxItems": 250, "items": {"$ref": "#/$defs/placement"}},
+    "wires": {"type": "array", "maxItems": 20000, "items": {"$ref": "#/$defs/wire"}},
+    "ports": {"type": "array", "minItems": 1, "maxItems": 16384, "items": {"$ref": "#/$defs/port"}},
+    "envelopes": {"type": "array", "minItems": 1, "maxItems": 250, "items": {"$ref": "#/$defs/envelope"}},
+    "diagnostics": {"type": "array", "maxItems": 0}
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z_][A-Za-z0-9_.-]*$"},
+    "point": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y"],
+      "properties": {
+        "x": {"type": "integer", "minimum": -1000000, "maximum": 1000000, "multipleOf": 10},
+        "y": {"type": "integer", "minimum": -1000000, "maximum": 1000000, "multipleOf": 10}
+      }
+    },
+    "anchor": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y"],
+      "properties": {
+        "x": {"type": "integer", "minimum": -1000000, "maximum": 1000000, "multipleOf": 20},
+        "y": {"type": "integer", "minimum": -1000000, "maximum": 1000000, "multipleOf": 20}
+      }
+    },
+    "escape": {"enum": [{"x": -1, "y": 0}, {"x": 1, "y": 0}, {"x": 0, "y": -1}, {"x": 0, "y": 1}]},
+    "placement": {
+      "type": "object", "additionalProperties": false, "required": ["id", "position", "rotation"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "position": {"$ref": "#/$defs/anchor"},
+        "rotation": {"type": "integer", "enum": [0, 90, 180, 270]}
+      }
+    },
+    "wire": {
+      "type": "object", "additionalProperties": false, "required": ["from", "to", "net_id"],
+      "properties": {
+        "from": {"$ref": "#/$defs/point"}, "to": {"$ref": "#/$defs/point"}, "net_id": {"$ref": "#/$defs/id"}
+      }
+    },
+    "port": {
+      "type": "object", "additionalProperties": false,
+      "required": ["instance_id", "direction", "pin", "net_id", "width", "position", "escape", "exit"],
+      "properties": {
+        "instance_id": {"$ref": "#/$defs/id"}, "direction": {"enum": ["input", "output"]},
+        "pin": {"type": "string", "minLength": 1, "maxLength": 16384}, "net_id": {"$ref": "#/$defs/id"},
+        "width": {"type": "integer", "minimum": 1, "maximum": 64},
+        "position": {"$ref": "#/$defs/point"}, "escape": {"$ref": "#/$defs/escape"}, "exit": {"$ref": "#/$defs/point"}
+      }
+    },
+    "envelope": {
+      "type": "object", "additionalProperties": false, "required": ["id", "bounds"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "bounds": {
+          "type": "object", "additionalProperties": false, "required": ["min", "max"],
+          "properties": {"min": {"$ref": "#/$defs/anchor"}, "max": {"$ref": "#/$defs/anchor"}}
+        }
+      }
+    }
+  }
+}
