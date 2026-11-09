@@ -94,8 +94,24 @@ Path Absolute(const Path& value) {
     return result;
 }
 
+// The bootstrap reports Path.resolve() results: junctions, substituted and mapped
+// drives and short names appear in their final form, which the launcher must match.
+Path Final(const Path& value) {
+    const auto path = Absolute(value);
+    Handle handle(CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                              OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (!handle) return path;
+    std::vector<wchar_t> buffer(32768);
+    const auto count = GetFinalPathNameByHandleW(handle.Get(), buffer.data(), static_cast<DWORD>(buffer.size()), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    if (!count || count >= buffer.size()) return path;
+    std::wstring text(buffer.data(), count);
+    if (text.rfind(L"\\\\?\\UNC\\", 0) == 0) text = L"\\\\" + text.substr(8);
+    else if (text.rfind(L"\\\\?\\", 0) == 0) text = text.substr(4);
+    return Absolute(text);
+}
+
 bool SamePath(const Path& first, const Path& second) {
-    auto a = Absolute(first).native(), b = Absolute(second).native();
+    auto a = Final(first).native(), b = Final(second).native();
     return CompareStringOrdinal(a.data(), static_cast<int>(a.size()), b.data(), static_cast<int>(b.size()), TRUE) == CSTR_EQUAL;
 }
 
@@ -117,9 +133,14 @@ Variables Environment(const Path& root) {
         if (split != std::wstring::npos) result[Lower(item.substr(0, split))] = item.substr(split + 1);
     }
     FreeEnvironmentStringsW(inherited);
-    for (const auto* key : {L"pythonhome", L"pythonpath", L"pythonuserbase", L"pythonstartup", L"pythoninspect",
-                            L"v2d_java", L"v2d_javac", L"v2d_yosys", L"v2d_iverilog", L"v2d_vvp", L"v2d_python",
-                            L"java_tool_options", L"_java_options", L"jdk_java_options"}) result.erase(key);
+    // Match portable_bootstrap.py: the desktop inherits this environment, not the bootstrap's.
+    const std::set<std::wstring> removed{L"virtual_env", L"java_home", L"java_tool_options", L"_java_options",
+                                         L"jdk_java_options", L"tcl_library", L"tk_library"};
+    for (auto it = result.begin(); it != result.end();) {
+        const auto& key = it->first;
+        const bool internal = key.rfind(L"v2d_", 0) == 0 && key != L"v2d_job_root" && key != L"v2d_native_tools_root";
+        it = key.rfind(L"python", 0) == 0 || internal || removed.count(key) ? result.erase(it) : std::next(it);
+    }
     result[L"pythonutf8"] = L"1";
     result[L"pythonnousersite"] = L"1";
     result[L"v2d_root"] = root.native();

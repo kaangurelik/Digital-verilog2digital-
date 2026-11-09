@@ -7924,12 +7924,12 @@
   ],
   "remaining_review": [
     "Current modified Digital/adapter/application source and exact build inputs must accompany any future source distribution; upstream revision alone omits local changes.",
-    "Mixed Digital GPLv3, EMF EPL1 and ELK/Xtext EPL2 composition is recorded without a compatibility verdict; local build/repro checks remain authorized.",
-    "XMLPull1.1.3.1 exact sources jar is absent at Maven Central; official API public-domain declaration is collected, conformance-test LGPL code is not present in the binary.",
-    "Listenablefuture9999 is an empty metadata-only placeholder with no source classes; its inherited Apache2 POM is retained.",
+    "Mixed Digital GPLv3, EMF EPL-1.0 and ELK/Xtext EPL-2.0 composition is recorded without a compatibility verdict; local build/repro checks remain authorized.",
+    "XMLPull 1.1.3.1 exact sources jar is absent at Maven Central; official API public-domain declaration is collected, conformance-test LGPL code is not present in the binary.",
+    "ListenableFuture 9999 is an empty metadata-only placeholder with no source classes; its inherited Apache-2.0 POM is retained.",
     "All nine shipped OSS CAD transitive runtime DLLs have exact Fedora package-member matches and corresponding notice mappings. Exact source RPMs are referenced, not included/rebuilt; RPM signatures were not independently verified. Readline package metadata and included COPYING disagree and both are preserved.",
-    "llama pinned CMake declares BoringSSL0.20260903.0; canonical tag/commit/license evidence is collected and exact embedded BoringSSL notice preserved. Overridden upstream build flags and complete embedded browser/UI dependency attribution are not fully resolved by this audit.",
-    "CUDA12.4.1 archived EULA and the hash-verified official cudart12.4.127 archive/license are collected; cudart DLL equals the pinned llama member. cuBLAS12.4.5.8 is identified by official12.4.1 redistribution index; full original cuBLAS archive equality was not downloaded/rechecked.",
+    "llama pinned CMake declares BoringSSL 0.20260903.0; canonical tag/commit/license evidence is collected and exact embedded BoringSSL notice preserved. Overridden upstream build flags and complete embedded browser/UI dependency attribution are not fully resolved by this audit.",
+    "CUDA 12.4.1 archived EULA and the hash-verified official cudart 12.4.127 archive/license are collected; cudart DLL equals the pinned llama member. cuBLAS 12.4.5.8 is identified by the official 12.4.1 redistribution index; full original cuBLAS archive equality was not downloaded/rechecked.",
     "Rolling NVIDIA component-license URLs are supplemental current evidence, not substitutes for version-pinned archived terms.",
     "Visual Studio local Redist inventory and Microsoft list are collected; publisher applicability of edition-specific terms is not decided here.",
     "Standalone compiled library and source copyright notices must retain component-specific paths; the shaded jar single META-INF/LICENSE is insufficient."

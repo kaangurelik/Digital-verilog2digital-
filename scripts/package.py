@@ -7,7 +7,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import shutil
 import stat
 import sys
@@ -157,13 +157,37 @@ def private_python(directory):
     for name in ("python.exe", "python314.dll", "Lib/venv/scripts/nt/venvlauncher.exe", "LICENSE.txt"):
         if not (extracted / name).is_file():
             raise ValueError(f"Private Python archive lacks {name}")
-    # Use the complete identified redistributable family, not a System32 copy.
+    vc_runtime(extracted)
+    return extracted
+
+
+def vc_runtime(destination):
+    """Copy the complete identified redistributable family, not a System32 copy.
+
+    Each copy must be the exact file the license inventory hashes.
+    """
+    recorded = {PureWindowsPath(item["path"]).name.casefold(): item
+                for item in document(ROOT / "scripts/release-licenses.json")["msvc"]["files"]}
     libraries = sorted(VC_DIRECTORY.glob("*.dll"))
-    if len(libraries) != 10:
+    if len(libraries) != 10 or {library.name.casefold() for library in libraries} != set(recorded):
         raise ValueError("Expected the audited ten-file VC143 x64 redistributable directory")
     for library in libraries:
-        shutil.copyfile(library, extracted / library.name)
-    return extracted
+        target = destination / library.name
+        shutil.copyfile(library, target)
+        expected = recorded[library.name.casefold()]
+        if target.stat().st_size != expected["bytes"] or sha256(target) != expected["sha256"]:
+            raise ValueError(f"VC143 runtime differs from its license inventory: {library.name}")
+
+
+def hdl_runtime(contents, hdl):
+    """Companion DLLs must be the exact binaries the license inventory maps to notices."""
+    recorded = {item["binary"]["path"]: item["binary"]
+                for item in document(ROOT / "scripts/release-licenses.json")["oss_cad_runtime_dependencies"]}
+    for name in HDL_FILES:
+        relative = (hdl / name).relative_to(ROOT).as_posix()
+        if name.startswith("lib/") and relative not in recorded:
+            raise ValueError(f"HDL runtime DLL has no license inventory mapping: {relative}")
+        contents.add(hdl / name, expected=recorded.get(relative))
 
 
 def dependencies(contents):
@@ -194,19 +218,31 @@ def notices(contents):
 
 def source_archive(path):
     files = []
-    for folder in ("agent", "digital-adapter", "gui", "schemas", "scripts", "src", "tests", "distribution"):
+    for folder in ("agent", "digital-adapter", "docs", "gui", "schemas", "scripts", "src", "tests", "distribution"):
         for file in (ROOT / folder).rglob("*"):
             if (file.is_file() and not file.is_symlink() and not {"target", "build", "__pycache__", ".pytest_cache"}.intersection(file.relative_to(ROOT).parts)
                     and file.suffix not in {".pyc", ".log"}):
                 reject_links(file)
                 files.append(file)
-    files.extend(ROOT / name for name in ("LICENSE", "pom.xml", ".gitignore", "README.md", *DOCUMENTATION) if (ROOT / name).is_file())
+    # pom.xml's validate phase requires the checkstyle configuration.
+    files.extend(ROOT / name for name in ("LICENSE", "pom.xml", "sun_checks_neemann.xml", ".gitignore", "README.md", *DOCUMENTATION)
+                 if (ROOT / name).is_file())
     with zipfile.ZipFile(path, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for file in sorted(set(files)):
             info = zipfile.ZipInfo(file.relative_to(ROOT).as_posix(), (2026, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             archive.writestr(info, file.read_bytes())
+
+
+def archive_time(digest):
+    """Reproducible, content-derived DOS time.
+
+    Python trusts __pycache__ by source mtime and size; a constant time would let
+    bytecode left by an older extraction match an edited same-size source.
+    """
+    seconds = int(digest[:8], 16) % 43200 * 2
+    return (2026, 1, 1, seconds // 3600, seconds // 60 % 60, seconds % 60)
 
 
 def write_archive(path, package, contents, prefix):
@@ -216,7 +252,7 @@ def write_archive(path, package, contents, prefix):
     records[manifest.name] = {"size": manifest.stat().st_size, "sha256": sha256(manifest)}
     with zipfile.ZipFile(path, "x", compression=zipfile.ZIP_STORED, allowZip64=True) as bundle:
         for name, expected in sorted(records.items()):
-            info = zipfile.ZipInfo(prefix + "/" + name, (2026, 1, 1, 0, 0, 0))
+            info = zipfile.ZipInfo(prefix + "/" + name, archive_time(expected["sha256"]))
             info.external_attr = 0o100644 << 16
             remaining, digest = expected["size"], hashlib.sha256()
             with (package / name).open("rb") as source, bundle.open(info, "w", force_zip64=True) as target:
@@ -289,8 +325,7 @@ def assemble(destination, *, model_ids=(), backends=("cpu", "cuda"), archive=Fal
         for name in GUI_DLLS:
             contents.add(compiler_bin / name, "gui/build/" + name)
         hdl = ROOT / ".tools" / LOCK["hdl"]["directory"]
-        for name in HDL_FILES:
-            contents.add(hdl / name)
+        hdl_runtime(contents, hdl)
         for name in ("lib/ivl", "share/yosys", "lib/tcl8.6", "license"):
             contents.tree(hdl / name)
         contents.tree(ROOT / ".tools" / LOCK["jdk"]["directory"])

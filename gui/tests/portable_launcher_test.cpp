@@ -27,6 +27,16 @@ Handle FixtureProcess(const std::vector<std::wstring>& args, const Path& cwd, DW
     Handle thread(info.hThread); if (pid) *pid = info.dwProcessId; return Handle(info.hProcess);
 }
 
+Path Junction(const Path& alias, const Path& target) {
+    wchar_t system[MAX_PATH]; Require(GetSystemDirectoryW(system,MAX_PATH)!=0,"Cannot locate cmd.exe");
+    std::wstring command=L"\""+(Path(system)/L"cmd.exe").native()+L"\" /d /s /c \"mklink /J \""+alias.native()+L"\" \""+target.native()+L"\"\"";
+    STARTUPINFOW startup{}; startup.cb=sizeof(startup); PROCESS_INFORMATION info{};
+    Check(CreateProcessW(nullptr,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&info),"Start junction fixture");
+    Handle process(info.hProcess),thread(info.hThread);
+    Require(WaitForSingleObject(process.Get(),10000)==WAIT_OBJECT_0 && std::filesystem::is_directory(alias/L"scripts"),"Cannot create the junction fixture");
+    return alias;
+}
+
 void NotRunning(DWORD pid) {
     Handle process(OpenProcess(SYNCHRONIZE, FALSE, pid));
     if (process) Require(WaitForSingleObject(process.Get(),3000)==WAIT_OBJECT_0,"Owned test child survived cleanup");
@@ -86,6 +96,15 @@ int main() {
         for (auto& c : caseRoot) if (c >= L'a' && c <= L'z') c -= L'a' - L'A';
         Require(SamePath(caseRoot,root),"Equivalent Windows path case was rejected");
         ParsePlan(plan.dump(),caseRoot);++checks;
+        {
+            // Python reports a junction, substituted or mapped drive by its final path.
+            auto alias=Junction(Absolute(base/L"junction-\u03c0"),root);
+            struct RemoveJunction { Path path; ~RemoveJunction(){ RemoveDirectoryW(path.c_str()); } } cleanup{alias};
+            Require(ParsePlan(plan.dump(),alias).executable==root/L"gui/build/v2d-gui.exe" && SamePath(alias/L"scripts",root/L"scripts"),
+                    "Launcher rejected its own package reached through a junction");
+            auto other=Absolute(base/L"other"); std::filesystem::create_directories(other/L"scripts");
+            Require(!SamePath(other,root) && !SamePath(other/L"scripts",alias/L"scripts"),"Distinct directories compared equal");++checks;
+        }
         for(const auto& edit : std::vector<std::pair<std::string,Json>>{
             {"/schema_version",1.0},{"/schema_version",true},{"/root","C:\\another-root"},
             {"/gui/executable",(root/L"other.exe").u8string()},{"/environment/V2D_ROOT","C:\\wrong"},
@@ -101,6 +120,23 @@ int main() {
         }
         for(const auto& arguments:std::vector<std::vector<std::wstring>>{{L"--root",L"C:\\injected"},{L"--cli"},{L"--project"},{L"--doctor",L"--smoke-test"},{L"--doctor",L"--project",L"x"}}) {
             bool rejected=false;try{ParseOptions(arguments);}catch(...){rejected=true;}Require(rejected,"Invalid launcher options accepted");++checks;
+        }
+        {
+            // The desktop receives this environment; internal runtime overrides must not reach it.
+            const std::vector<const wchar_t*> names{L"V2D_JOB_TMP",L"V2D_JAVA_HEAP_BYTES",L"V2D_JAVA",L"JAVA_HOME",L"TCL_LIBRARY",
+                                                    L"VIRTUAL_ENV",L"PYTHONOPTIMIZE",L"V2D_JOB_ROOT",L"V2D_NATIVE_TOOLS_ROOT"};
+            std::vector<std::pair<std::wstring,std::optional<std::wstring>>> previous;
+            for(const auto* name:names){
+                wchar_t buffer[32768]; auto size=GetEnvironmentVariableW(name,buffer,32768);
+                previous.emplace_back(name,size?std::optional<std::wstring>(std::wstring(buffer,size)):std::nullopt);
+                SetEnvironmentVariableW(name,L"C:\\inherited");
+            }
+            auto sanitized=Environment(root);
+            for(const auto& item:previous)SetEnvironmentVariableW(item.first.c_str(),item.second?item.second->c_str():nullptr);
+            for(const auto* name:{L"v2d_job_tmp",L"v2d_java_heap_bytes",L"v2d_java",L"java_home",L"tcl_library",L"virtual_env",L"pythonoptimize"})
+                Require(!sanitized.count(name),"Inherited runtime override reached the bootstrap or desktop");
+            Require(sanitized[L"v2d_job_root"]==L"C:\\inherited" && sanitized[L"v2d_native_tools_root"]==L"C:\\inherited"
+                    && sanitized[L"v2d_root"]==root.native() && sanitized[L"pythonutf8"]==L"1","Supported launcher settings changed");++checks;
         }
         fixture("valid");auto capture=RunOwned(command,root,Environment(root),5s,true);
         Require(capture.exit_code==0 && capture.remaining_processes==0,"Owned bootstrap did not drain");

@@ -1,5 +1,6 @@
 """Release publication preserves exact inputs and never packages mutable extras."""
 import importlib.util
+import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -132,3 +133,86 @@ def test_dependency_without_file_inventory_is_not_silently_omitted(tmp_path, mon
         SimpleNamespace(locate_file=lambda record: site / record, files=None))
     with pytest.raises(ValueError, match="no installed file inventory"):
         builder.dependencies(builder.Contents())
+
+
+def _inventory(root, **sections):
+    (root / "scripts").mkdir(parents=True, exist_ok=True)
+    (root / "scripts/release-licenses.json").write_text(json.dumps(sections), encoding="utf-8")
+
+
+def test_vc_runtime_copies_only_the_inventory_hashed_redistributables(tmp_path, monkeypatch):
+    redist = tmp_path / "redist"
+    redist.mkdir()
+    files = []
+    for index in range(10):
+        library = redist / f"runtime{index}.dll"
+        library.write_bytes(b"vc runtime %d" % index)
+        files.append({"path": "C:\\VC\\Redist\\" + library.name.upper(), "sha256": builder.sha256(library), "bytes": library.stat().st_size})
+    _inventory(tmp_path, msvc={"files": files})
+    monkeypatch.setattr(builder, "ROOT", tmp_path)
+    monkeypatch.setattr(builder, "VC_DIRECTORY", redist)
+    copied = tmp_path / "first"; copied.mkdir()
+    builder.vc_runtime(copied)
+    assert {path.name: path.read_bytes() for path in copied.iterdir()} == {path.name: path.read_bytes() for path in redist.iterdir()}
+    (redist / "runtime3.dll").write_bytes(b"vc runtime X")
+    with pytest.raises(ValueError, match="license inventory"):
+        builder.vc_runtime(tmp_path / "first")
+    (redist / "runtime3.dll").write_bytes(b"vc runtime 3")
+    (redist / "runtime3.dll").rename(redist / "unaudited.dll")
+    with pytest.raises(ValueError, match="ten-file"):
+        builder.vc_runtime(tmp_path / "first")
+
+
+def test_hdl_companion_dlls_must_be_the_inventory_mapped_binaries(tmp_path, monkeypatch):
+    hdl = tmp_path / ".tools/oss-cad-suite"
+    recorded = []
+    for name in builder.HDL_FILES:
+        path = hdl / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(name.encode())
+        if name.startswith("lib/"):
+            recorded.append({"binary": {"path": ".tools/oss-cad-suite/" + name, "sha256": builder.sha256(path), "bytes": path.stat().st_size}})
+    _inventory(tmp_path, oss_cad_runtime_dependencies=recorded)
+    monkeypatch.setattr(builder, "ROOT", tmp_path)
+    contents = builder.Contents()
+    builder.hdl_runtime(contents, hdl)
+    assert set(contents.files) == {".tools/oss-cad-suite/" + name for name in builder.HDL_FILES}
+    (hdl / "lib/libffi-8.dll").write_bytes(b"another build of lib/libffi-8.dll")
+    with pytest.raises(ValueError, match="recorded hash"):
+        builder.hdl_runtime(builder.Contents(), hdl)
+    _inventory(tmp_path, oss_cad_runtime_dependencies=[item for item in recorded if not item["binary"]["path"].endswith("libffi-8.dll")])
+    with pytest.raises(ValueError, match="no license inventory mapping"):
+        builder.hdl_runtime(builder.Contents(), hdl)
+
+
+def test_source_archive_keeps_documentation_and_build_configuration(tmp_path, monkeypatch):
+    for name in ("docs/desktop.md", "sun_checks_neemann.xml", "pom.xml", "README.md", "src/main/Example.java",
+                 "gui/src/main.cpp", "gui/build/v2d-gui.exe", "agent/src/__pycache__/x.pyc"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"source")
+    monkeypatch.setattr(builder, "ROOT", tmp_path)
+    archive = tmp_path / "out/source.zip"
+    archive.parent.mkdir()
+    builder.source_archive(archive)
+    with zipfile.ZipFile(archive) as bundle:
+        names = set(bundle.namelist())
+    assert {"docs/desktop.md", "sun_checks_neemann.xml", "pom.xml", "README.md", "src/main/Example.java", "gui/src/main.cpp"} <= names
+    assert not {"gui/build/v2d-gui.exe", "agent/src/__pycache__/x.pyc"} & names
+
+
+def test_archive_times_follow_content_so_stale_bytecode_cannot_match_an_edited_source(tmp_path):
+    sources = {"old.py": b"LIMIT = 300\n", "edited.py": b"LIMIT = 600\n", "copy.py": b"LIMIT = 300\n"}
+    contents = builder.Contents()
+    for name, data in sources.items():
+        (tmp_path / name).write_bytes(data)
+        contents.add(tmp_path / name, "agent/" + name)
+    package = tmp_path / "private-package"
+    contents.copy(package)
+    builder.write_document(package / "release-manifest.json", {"version": "test"})
+    builder.write_archive(tmp_path / "release.zip", package, contents, "release")
+    with zipfile.ZipFile(tmp_path / "release.zip") as archive:
+        times = {info.filename: info.date_time for info in archive.infolist()}
+    # Same size, different bytes: an earlier release's timestamp-validated pyc must not apply.
+    assert times["release/agent/old.py"] == times["release/agent/copy.py"] != times["release/agent/edited.py"]
+    assert all(time[:3] == (2026, 1, 1) for time in times.values())
