@@ -8,7 +8,7 @@ import time
 
 from .adapter import Adapter
 from .conversion import (ConversionError, _hash, _initialization_valid, _preview_scale, _write,
-                         compare_behavior, compare_sequential_behavior, validate_export)
+                         compare_behavior, compare_sequential_behavior, simulate_combinational, validate_export)
 from .frontend.yosys import source_hashes
 from .layout.general import layout_general
 from .layout.scalar import layout_reserved
@@ -103,15 +103,31 @@ def _route_module(mapped, adapter, path, record_dir, options, label, advance, *,
             record = {"layout": {**layout, "circuit": circuit}, "mapped": intent, "inspection": inspection,
                       "validation": validation, "emitted": emitted, "paths": paths, "attempts": attempts}
             if refiner is not None and refiner.enabled:
+                from .llm.loop import install_candidate
+                if layout.get("tunnels", {}).get("nets"):
+                    from .layout.candidates import verify_candidate
+
+                    def check(candidate, expected, name):
+                        # Packaged circuits use private basenames inside the package root.
+                        return verify_candidate(expected, {**candidate, "circuit": {**candidate["circuit"], "label": label}},
+                                                adapter, record_dir / f"refinement-{name}", deadline=time.monotonic() + 60,
+                                                target=path.with_name(f"{path.stem}-{name}.dig"))
+                    # Refine the visible wires, then insert the same validated tunnels.
+                    selected, before = refiner.refine_tunneled(mapped, record, base, check=check, adapter=adapter,
+                                                               package=adapter.context())
+                else:
+                    selected, before = refiner.refine(intent, record, package=adapter.context()), record
                 if baseline_preview is not None:
-                    record["baseline_preview_metadata"] = render_preview(adapter, paths, baseline_preview,
-                        inspection=inspection, emitted=emitted, scale=_preview_scale(circuit, inspection["instances"]),
+                    # Render before installation replaces the pre-refinement file.
+                    record["baseline_preview_metadata"] = render_preview(adapter, before["paths"], baseline_preview,
+                        inspection=before["inspection"], emitted=before["emitted"],
+                        scale=_preview_scale(before["layout"]["circuit"], before["inspection"]["instances"]),
                         module_id=mapped["module_id"], comparison_scope="top_after_child_refinement_before_top_refinement",
                         artifact="baseline_preview")
-                from .llm.loop import install_candidate
-                selected = refiner.refine(intent, record, package=adapter.context())
                 record = {**record, **install_candidate(selected, path)}
                 record["validation"]["refinement"] = record["refinement"]
+                _write(record_dir / "candidate.json", record["layout"]["circuit"])
+                _write(record_dir / "routing-mapped.json", record["mapped"])
                 _write(record_dir / "inspection.json", record["inspection"])
                 _write(record_dir / "validation.json", record["validation"])
             return record
@@ -233,9 +249,9 @@ def convert_prepared_hierarchy(project, hierarchy, destination, work, *, adapter
             stimuli = plan["stimuli"]
             _write(work / "stimuli.json", stimuli)
             reference = simulate_reference(project, design, work / "reference", stimuli)
-            simulation = native.call("circuit.simulate", {**top["paths"], "stimuli": [
+            simulation = simulate_combinational(native, top["paths"], [
                 {"values": {port["instance_id"]: hex(values[port["port"]]) for port in behavior_mapping["inputs"]}}
-                for values in stimuli]})
+                for values in stimuli], [port["instance_id"] for port in behavior_mapping["outputs"]])
             behavior = compare_behavior(behavior_mapping, stimuli, reference, simulation, coverage=plan["assumptions"])
         _write(work / "reference-samples.json", reference)
         _write(work / "digital-samples.json", simulation)

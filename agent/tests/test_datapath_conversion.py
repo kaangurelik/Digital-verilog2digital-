@@ -57,6 +57,18 @@ def test_selected_readable_blocks_survive_mapping(tmp_path, native_adapter):
     assert {"Add", "Sub", "Splitter"} <= {item["type"] for item in mapped["instances"]}
 
 
+def test_matching_operand_buses_are_shared_through_native_reload(tmp_path, native_adapter):
+    result = convert(Project([FIXTURES / "add_sub8.v"], top="add_sub8"), tmp_path / "shared", adapter=native_adapter)
+    validation = read(result["validation"])
+    assert validation["valid"] and validation["bits"]["valid"] and validation["topology"]["valid"], validation
+    mapped = read(Path(result["directory"]) / "work/mapped.json")
+    types = {item["id"]: item["type"] for item in mapped["instances"]}
+    assert "Splitter" not in types.values()
+    operands = [sorted(types[endpoint["instance_id"]] for endpoint in net["endpoints"])
+                for net in mapped["nets"] if net["width"] == 8 and any(types[item["instance_id"]] == "In" for item in net["endpoints"])]
+    assert operands == [["Add", "In", "Sub"], ["Add", "In", "Sub"]]
+
+
 def test_high_output_bit_corruption_cannot_be_published(tmp_path, native_adapter):
     class CorruptHighBit:
         capabilities = native_adapter.capabilities

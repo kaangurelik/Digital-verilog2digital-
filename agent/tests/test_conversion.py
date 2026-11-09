@@ -5,15 +5,20 @@ from copy import deepcopy
 import hashlib
 from itertools import product
 import json
+import os
 from pathlib import Path
+import shutil
 import xml.etree.ElementTree as ET
 
 import pytest
 
+from verilog2digital import verification
 from verilog2digital.adapter import Adapter
-from verilog2digital.conversion import convert
+from verilog2digital.conversion import convert, simulate_combinational
 from verilog2digital.frontend.errors import FrontendError
 from verilog2digital.frontend.project import Project
+from verilog2digital.jobs.publication import bundle_bindings
+from verilog2digital.validation.hierarchy import verify_package_snapshot
 from test_reference import CASES, FIXTURES
 
 
@@ -296,3 +301,208 @@ def test_source_changed_during_rendering_cannot_be_published(tmp_path, conversio
     assert failure.value.code == "SOURCE_CHANGED"
     report = assert_no_published_result(destination)
     assert report["stage"] == "publishing"
+
+
+windows_staging = pytest.mark.skipif(os.name != "nt", reason="Only the pinned Windows HDL tools need ASCII staging")
+
+
+@pytest.fixture
+def staging_root(tmp_path, monkeypatch):
+    root = tmp_path / "jobs"
+    monkeypatch.setenv("V2D_JOB_ROOT", str(root))
+    return root
+
+
+def assert_scratch_removed(root):
+    assert not (root / "_direct").exists() or not list((root / "_direct").iterdir())
+
+
+def assert_original_bundle(result, destination, sources):
+    manifest = read_json(result["manifest"])
+    assert manifest["state"] == "ready" and Path(result["directory"]) == destination
+    assert manifest["sources"] == {str(path.resolve()): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
+    assert bundle_bindings(destination, manifest)
+    for label, artifact in manifest["artifacts"].items():
+        assert Path(result[label]) == destination / artifact["path"]
+        assert hashlib.sha256((destination / artifact["path"]).read_bytes()).hexdigest() == artifact["sha256"]
+    for name in ("manifest.json", "validation.json", *(["package.json"] if "package" in manifest["artifacts"] else [])):
+        assert "_direct" not in (destination / name).read_text(encoding="utf-8")
+    snapshot = read_json(destination / "work/source-snapshot.json")
+    assert set(snapshot["sources"]) == set(manifest["sources"])
+    return manifest
+
+
+@windows_staging
+def test_unicode_and_space_paths_are_staged_with_original_provenance(tmp_path, conversion_adapter, staging_root):
+    inputs = tmp_path / "kaynak alanı Ω"
+    includes = tmp_path / "başlık 日本語"
+    header = includes / "işlem tanımı.vh"
+    source = inputs / "devre ğ.v"
+    includes.mkdir()
+    inputs.mkdir()
+    header.write_text("`define OP(a,b) ((a)^(b))\n", encoding="utf-8")
+    source.write_text('`include "işlem tanımı.vh"\nmodule top(input [1:0] a,b,output [1:0] y); assign y=`OP(a,b); endmodule\n',
+                      encoding="utf-8")
+    destination = tmp_path / "çıktı alanı Ω"
+    stages = []
+
+    def observe(event):
+        stages.append(event["stage"])
+        if event["stage"] == "ready":
+            raise RuntimeError("observer failed after publication")
+
+    result = convert(Project([source], top="top", include_dirs=[includes]), destination,
+                     adapter=conversion_adapter, progress=observe)
+    assert stages[0] == "snapshotting_sources" and stages[-1] == "ready" and stages.count("ready") == 1
+    assert "validating_behavior" in stages and not (destination / "failure.json").exists()
+    assert [item["message"] for item in result["progress_warnings"]] == ["observer failed after publication"]
+    manifest = assert_original_bundle(result, destination, [source, header])
+    assert manifest["progress_warnings"] == []
+    assert manifest["configuration"]["sources"] == [str(source.resolve())]
+    assert manifest["configuration"]["include_dirs"] == [str(includes.resolve())]
+    assert manifest["behavior"]["valid"] and manifest["behavior"]["coverage"] == "exhaustive_binary"
+    assert "snapshotting_sources" in manifest["timings_seconds"]
+    checked = verification.validate_output(destination, adapter=conversion_adapter)
+    assert checked["valid"], checked["diagnostics"]
+    assert set(checked["checks"]) == {"artifacts", "sources", "runtime", "native_model"}
+    assert checked["checks"]["runtime"]["scope"] == "legacy_recorded_tools"
+    assert_scratch_removed(staging_root)
+
+
+@windows_staging
+def test_unicode_hierarchy_is_staged_as_a_relocatable_native_package(tmp_path, conversion_adapter, staging_root):
+    source = tmp_path / "hiyerarşi Ω" / "durumlu çocuklar.v"
+    source.parent.mkdir()
+    shutil.copyfile(FIXTURES.parent / "hierarchy/stateful_children.v", source)
+    destination = tmp_path / "paket çıktısı ışık"
+    result = convert(Project([source], top="stateful_children"), destination, adapter=conversion_adapter)
+    manifest = assert_original_bundle(result, destination, [source])
+    assert manifest["profile"] == "hierarchy-v1"
+    package = read_json(result["package"])
+    children = [item["path"] for item in package["snapshot"]["files"] if not item["path"].startswith("circuit.dig")]
+    assert children and all(name.startswith("m_") and (destination / name).is_file() for name in children)
+    assert verify_package_snapshot(destination, package["snapshot"])["valid"]
+    checked = verification.validate_output(destination, adapter=conversion_adapter)
+    assert checked["valid"], checked["diagnostics"]
+    assert_scratch_removed(staging_root)
+
+
+@windows_staging
+def test_unicode_staged_failure_writes_original_location_at_destination(tmp_path, conversion_adapter, staging_root):
+    includes = tmp_path / "başlık Ω"
+    includes.mkdir()
+    header = includes / "hatalı ğ.vh"
+    header.write_text("\n\nwire t = missing_name;\n", encoding="utf-8")
+    source = tmp_path / "devre ışık.v"
+    source.write_text('module top(input a,output y);\n`include "hatalı ğ.vh"\nassign y = a;\nendmodule\n', encoding="utf-8")
+    destination = tmp_path / "çıktı hata Ω"
+    with pytest.raises(FrontendError) as failure:
+        convert(Project([source], top="top", include_dirs=[includes]), destination, adapter=conversion_adapter)
+    assert failure.value.code == "SLANG_ERROR"
+    assert (failure.value.path, failure.value.line, failure.value.column) == (str(header.resolve()), 3, 10)
+    report = assert_no_published_result(destination)
+    assert report["stage"] == "lowering"
+    assert {key: report["diagnostic"][key] for key in ("code", "path", "line")} == {
+        "code": "SLANG_ERROR", "path": str(header.resolve()), "line": 3}
+    assert set(read_json(destination / "work/source-snapshot.json")["sources"]) == {str(source.resolve()), str(header.resolve())}
+    assert_scratch_removed(staging_root)
+
+
+@windows_staging
+def test_unicode_snapshot_failure_and_existing_output_keep_their_semantics(tmp_path, conversion_adapter, staging_root):
+    source = tmp_path / "eksik ğ.v"
+    source.write_text('`include "yok.vh"\nmodule top; endmodule\n', encoding="utf-8")
+    destination = tmp_path / "çıktı Ω"
+    with pytest.raises(FrontendError) as failure:
+        convert(Project([source], top="top"), destination, adapter=conversion_adapter)
+    assert failure.value.code == "MISSING_INCLUDE" and failure.value.path == str(source.resolve())
+    report = assert_no_published_result(destination)
+    assert report["stage"] == "snapshotting_sources" and report["diagnostic"]["line"] == 1
+    before = file_hashes(destination)
+    with pytest.raises(FrontendError) as existing:
+        convert(project("buffer"), destination, adapter=conversion_adapter)
+    assert existing.value.code == "OUTPUT_EXISTS" and file_hashes(destination) == before
+    assert_scratch_removed(staging_root)
+
+
+@windows_staging
+def test_unicode_replay_refinement_publishes_its_baseline_preview(tmp_path, conversion_adapter, staging_root):
+    source = tmp_path / "iyileştirme Ω.v"
+    source.write_text("module top(input a,b,output y); assign y=a^b; endmodule\n", encoding="utf-8")
+    destination = tmp_path / "çıktı iyileştirme"
+    result = convert(Project([source], top="top"), destination, adapter=conversion_adapter, layout_strategy="reserved",
+                     refinement={"mode": "replay", "responses": ["{malformed"], "max_attempts": 1, "budget_seconds": 10})
+    manifest = assert_original_bundle(result, destination, [source])
+    assert manifest["refinement"]["mode"] == "replay" and manifest["refinement"]["accepted"] == 0
+    assert Path(result["baseline_preview"]) == destination / "baseline-preview.png"
+    assert Path(result["baseline_preview"]).read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert_scratch_removed(staging_root)
+
+
+@windows_staging
+def test_original_unicode_source_changed_during_staged_conversion_is_not_published(tmp_path, conversion_adapter, staging_root):
+    source = tmp_path / "değişen kaynak Ω.v"
+    source.write_text("module top(input a,output y); assign y=a; endmodule\n", encoding="utf-8")
+    destination = tmp_path / "çıktı değişim"
+
+    def change(event):
+        if event["stage"] == "rendering":
+            source.write_text("module top(input a,output y); assign y=~a; endmodule\n", encoding="utf-8")
+
+    with pytest.raises(FrontendError) as failure:
+        convert(Project([source], top="top"), destination, adapter=conversion_adapter, progress=change)
+    assert failure.value.code == "SOURCE_CHANGED" and failure.value.path == str(source.resolve())
+    report = assert_no_published_result(destination)
+    assert report["stage"] == "publishing" and report["diagnostic"]["path"] == str(source.resolve())
+    assert_scratch_removed(staging_root)
+
+
+@windows_staging
+def test_unretained_staged_work_files_do_not_reject_a_verified_result(tmp_path, conversion_adapter, staging_root, monkeypatch):
+    from verilog2digital import conversion
+    def unavailable(source, target):
+        raise PermissionError("diagnostic copy denied")
+    monkeypatch.setattr(conversion.shutil, "copytree", unavailable)
+    source = tmp_path / "kaynak Ω.v"
+    source.write_text("module top(input a,output y); assign y=~a; endmodule\n", encoding="utf-8")
+    result = convert(Project([source], top="top"), tmp_path / "çıktı Ω", adapter=conversion_adapter)
+    manifest = read_json(result["manifest"])
+    assert manifest["state"] == "ready" and not (tmp_path / "çıktı Ω" / "work").exists()
+    assert [item["message"] for item in manifest["progress_warnings"]] == [
+        "Intermediate work files were not retained: diagnostic copy denied"]
+    assert_scratch_removed(staging_root)
+
+
+def test_invalid_layout_timeout_is_rejected_with_a_readable_message_before_output(tmp_path):
+    with pytest.raises(FrontendError) as failure:
+        convert(project("buffer"), tmp_path / "unused", layout_timeout=500)
+    assert failure.value.code == "INVALID_LAYOUT_OPTIONS"
+    assert failure.value.message == "Layout timeout must be between 1 and 120 seconds"
+    assert not (tmp_path / "unused").exists()
+
+
+def test_combinational_simulation_batches_stay_inside_the_adapter_line_limit():
+    class Recorder:
+        def __init__(self):
+            self.batches = []
+
+        def call(self, method, params):
+            assert method == "circuit.simulate" and params["path"] == "c.dig"
+            self.batches.append(len(params["stimuli"]))
+            return {"schema_version": 1, "samples": [{"values": {name: item["values"]["a"] for name in outputs},
+                                                      "high_z": {name: "0x0" for name in outputs}}
+                                                     for item in params["stimuli"]]}
+
+    outputs = [f"wide_output_port_{index:03d}" for index in range(64)]
+    stimuli = [{"values": {"a": hex(index)}} for index in range(4096)]
+    native = Recorder()
+    result = simulate_combinational(native, {"path": "c.dig", "sidecar_path": "c.dig.ids.json"}, stimuli, outputs)
+    assert [sample["values"][outputs[-1]] for sample in result["samples"]] == [hex(index) for index in range(4096)]
+    widest = {name: "0x" + "f" * 16 for name in outputs}
+    sample_bytes = len(json.dumps({"values": widest, "high_z": widest}).encode("utf-8")) + 1
+    assert len(native.batches) > 1 and sum(native.batches) == 4096
+    assert max(native.batches) * sample_bytes < 8 * 1024 * 1024
+    small = Recorder()
+    outputs = ["y"]
+    simulate_combinational(small, {"path": "c.dig", "sidecar_path": "c.dig.ids.json"}, stimuli, outputs)
+    assert small.batches == [4096]

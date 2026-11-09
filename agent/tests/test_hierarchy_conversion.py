@@ -13,7 +13,8 @@ from test_conversion import conversion_adapter, ForwardingAdapter, assert_no_pub
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests/fixtures/verilog/hierarchy"
 POSITIVE = ("repeated_logic", "parameter_specializations", "nested_arithmetic", "stateful_children",
-            "controller_datapath", "port_aliases", "generated_children", "unused_state_output", "sized_parameters")
+            "controller_datapath", "port_aliases", "generated_children", "unused_state_output", "sized_parameters",
+            "shared_child_buses", "unused_child_input")
 
 
 def document(path):
@@ -45,6 +46,13 @@ def test_hierarchy_corpus_validates_all_local_canvases_and_expanded_behavior(nam
         assert proof["register_count"] == 2 and proof["known_register_bits"] == 16
         defaults = report["behavior"]["digital_assumptions"]["initialization"]["native_defaults"]
         assert len(defaults) == 2 and all("." in identifier for identifier in defaults)
+    if name == "shared_child_buses":
+        # Equal vectors share buses; the child's unused input stays an unsplit isolated bus.
+        (entry,) = package["modules"]
+        mapped = document(Path(result["directory"]) / "work/modules" / entry["type"].removesuffix(".dig") / "mapped.json")
+        labels = {item["id"]: item["attributes"].get("Label") for item in mapped["instances"]}
+        types = {item["id"]: item["type"] for item in mapped["instances"]}
+        assert [labels[item["owner"]] for item in mapped["origins"] if types[item["instance_id"]] == "Splitter"] == []
     if name == "parameter_specializations":
         children = [item for item in package["specializations"] if item["name"] == "hier_add"]
         assert len(children) == 2 and children[0]["file"] != children[1]["file"]

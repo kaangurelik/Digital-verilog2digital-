@@ -7,7 +7,9 @@ import json
 import math
 import os
 from pathlib import Path
+import shutil
 import time
+import uuid
 
 from .adapter import Adapter, AdapterError
 from .contracts import ContractError
@@ -39,6 +41,18 @@ def _write(path: Path, value: dict | list) -> None:
 def _hash(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def simulate_combinational(native, paths: dict, stimuli: list[dict], output_ids: list[str]) -> dict:
+    """Batch stateless vectors so each request and response stays well inside the 8 MiB line limit."""
+    widest = {"values": {key: "0x" + "f" * 16 for key in output_ids}}
+    sample = len(json.dumps({**widest, "high_z": widest["values"]}).encode("utf-8"))
+    request = max((len(json.dumps(item, ensure_ascii=False).encode("utf-8")) for item in stimuli), default=0)
+    size = max(1, 6 * 1024 * 1024 // (max(sample, request) + 2))
+    samples = []
+    for start in range(0, len(stimuli), size):
+        samples.extend(native.call("circuit.simulate", {**paths, "stimuli": stimuli[start:start + size]})["samples"])
+    return {"schema_version": 1, "samples": samples}
 
 
 def exhaustive_stimuli(mapped: dict) -> list[dict[str, int]]:
@@ -200,14 +214,180 @@ def _preview_scale(circuit: dict, descriptors: list[dict]) -> float:
     return scale
 
 
+def _staging_required(project: Project, destination: Path) -> bool:
+    """The pinned Windows HDL tools need ASCII paths; spaces already work directly."""
+    if os.name != "nt":
+        return False
+    try:
+        return any(not str(Path(path).resolve()).isascii()
+                   for path in [destination, *project.sources, *project.include_dirs])
+    except (OSError, TypeError, ValueError, AttributeError):
+        return False  # The direct path reports invalid project values.
+
+
+def _staging_directory(root: Path) -> Path:
+    configured = os.environ.get("V2D_JOB_ROOT")
+    base = Path(configured).resolve() if configured else root / ".runs/jobs"
+    if not str(base).isascii():
+        raise ConversionError("UNSUPPORTED_JOB_ROOT", "Set V2D_JOB_ROOT to an ASCII directory for staged native "
+                              "tool copies; project and output paths may contain Unicode", path=str(base))
+    # Job retention only owns 32-hex directories; this private scratch is removed after use.
+    directory = base / "_direct" / uuid.uuid4().hex
+    directory.mkdir(parents=True)
+    return directory
+
+
+def _relocated(value, old: Path, new: Path):
+    """Point diagnostics at retained work files after they leave scratch storage."""
+    if isinstance(value, str):
+        return value.replace(str(old), str(new)).replace(old.as_posix(), new.as_posix())
+    if isinstance(value, list):
+        return [_relocated(item, old, new) for item in value]
+    if isinstance(value, dict):
+        return {key: _relocated(item, old, new) for key, item in value.items()}
+    return value
+
+
+def _retain_work(staged: Path, destination: Path, snapshot: dict) -> dict | None:
+    """Copy diagnostics beside the result; a failed copy never changes the conversion outcome."""
+    try:
+        if (staged / "work").is_dir() and not (destination / "work").exists():
+            shutil.copytree(staged / "work", destination / "work")
+            # Native logs name private copies such as f0000.v; this maps them back.
+            _write(destination / "work/source-snapshot.json", {key: snapshot[key] for key in ("sources", "binding", "source_map")})
+    except (OSError, TypeError, ValueError) as error:
+        return {"stage": "publishing", "message": f"Intermediate work files were not retained: {error}"[:500]}
+    return None
+
+
+def _convert_staged(project: Project, destination: Path, *, progress, options: dict) -> dict:
+    """Convert Windows Unicode paths through the verified job source snapshot.
+
+    Native tools only see private ASCII copies. The destination receives the
+    hash-checked bundle with original provenance, then scratch storage is removed.
+    """
+    from .jobs.publication import bundle_bindings, contained_file, read_document, verify_sources
+    from .jobs.workspace import restore_provenance, snapshot_project, verify_snapshot
+    from .validation.hierarchy import verify_package_snapshot
+    try:
+        destination.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as error:
+        raise ConversionError("OUTPUT_EXISTS", "Choose a new output directory; existing results are preserved", path=str(destination)) from error
+    started = time.perf_counter()
+    stage, scratch, staged, source_map, warnings, timings = "snapshotting_sources", None, None, None, [], {}
+
+    def notify(name):
+        if progress:
+            try:
+                progress({"stage": name, "elapsed_seconds": round(time.perf_counter() - started, 3)})
+            except Exception as error:
+                # Observer failures must not invalidate a published result.
+                if len(warnings) < 8:
+                    warnings.append({"stage": name, "message": str(error)[:500]})
+
+    def forward(event):
+        nonlocal stage
+        stage = event["stage"]
+        # The selected result is ready only after it reaches the requested destination.
+        if progress and stage != "ready":
+            progress({**event, "elapsed_seconds": round(time.perf_counter() - started, 3)})
+
+    try:
+        scratch = _staging_directory(repository_root())
+        notify(stage)
+        snapshot = snapshot_project(project, scratch)
+        verify_snapshot(snapshot)
+        source_map = snapshot["source_map"]
+        timings["snapshotting_sources"] = round(time.perf_counter() - started, 6)
+        staged = scratch / "candidate"
+        convert(snapshot["project"], staged, progress=forward, **options)
+        stage = "publishing"
+        publishing_started = time.perf_counter()
+        verify_snapshot(snapshot)
+        verify_sources(snapshot["sources"])
+        manifest = read_document(staged / "manifest.json")
+        bindings = bundle_bindings(staged, manifest)
+        published = restore_provenance(manifest, source_map)
+        published["sources"] = dict(snapshot["sources"])
+        published["progress_warnings"] = [*warnings, *published.get("progress_warnings", [])]
+        for label, (source, wanted) in bindings.items():
+            target = contained_file(destination, manifest["artifacts"][label]["path"], must_exist=False)
+            if label in {"validation", "package"}:
+                original = read_document(source)
+                restored = restore_provenance(original, source_map)
+                if restored != original:
+                    _write(target, restored)
+                    published["artifacts"][label]["sha256"] = _hash(target)
+                    continue
+            shutil.copyfile(source, target)
+            if _hash(target) != wanted:
+                raise ConversionError("ARTIFACT_CHANGED", "A validated artifact changed while it was published", path=str(target))
+        retained = _retain_work(staged, destination, snapshot)
+        if retained is not None:
+            published["progress_warnings"].append(retained)
+        verify_sources(snapshot["sources"])
+        final = bundle_bindings(destination, published)
+        if "package" in final and not verify_package_snapshot(destination, read_document(final["package"][0])["snapshot"])["valid"]:
+            raise ConversionError("ARTIFACT_CHANGED", "A published hierarchy circuit or identity sidecar changed")
+        recorded = published.get("timings_seconds", {})
+        published["timings_seconds"] = {**timings, **recorded, "publishing": round(
+            recorded.get("publishing", 0) + time.perf_counter() - publishing_started, 6)}
+        published["duration_seconds"] = round(time.perf_counter() - started, 6)
+        _write(destination / "manifest.json", published)
+        result = {"schema_version": 1, "state": "ready", "top": published["top"], "directory": str(destination),
+                  **{label: str(path) for label, (path, _) in final.items()},
+                  "manifest": str(destination / "manifest.json")}
+        warnings.clear()
+        notify("ready")
+        result["progress_warnings"] = [*published["progress_warnings"], *warnings]
+        return result
+    except Exception as error:
+        failure = None
+        if staged is not None and (staged / "failure.json").is_file():
+            try:
+                failure = read_document(staged / "failure.json")
+            except (OSError, ValueError):
+                failure = None
+        if failure is None:
+            diagnostic = error.as_dict() if isinstance(error, FrontendError) else {"code": "CONVERSION_FAILED", "message": str(error)}
+            if isinstance(error, AdapterError) and error.data is not None:
+                diagnostic["adapter"] = error.data
+            if hasattr(error, "details"):
+                diagnostic["details"] = error.details
+            failure = {"schema_version": 1, "state": "failed", "stage": stage, "diagnostic": diagnostic,
+                       "timings_seconds": timings}
+        if source_map is not None:
+            failure = restore_provenance(failure, source_map)
+        if staged is not None:
+            failure = _relocated(failure, staged, destination)
+            _retain_work(staged, destination, snapshot)  # Best effort; scratch storage is still removed.
+        if isinstance(error, FrontendError):
+            # Keep the exception type while reporting original source locations.
+            located = error.as_dict()
+            if source_map is not None:
+                located = restore_provenance(located, source_map)
+            if staged is not None:
+                located = _relocated(located, staged, destination)
+            error.message, error.path, error.line, error.column = (located.get(key) for key in ("message", "path", "line", "column"))
+            error.args = (error.message,)
+        _write(destination / "failure.json", failure)
+        if isinstance(error, (FrontendError, AdapterError, ContractError)):
+            raise
+        raise ConversionError("CONVERSION_FAILED", f"{stage}: {error}") from error
+    finally:
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+
 def convert(project: Project, output_dir: Path, *, adapter=None, spacing: int = 40, progress=None,
             profile: str = "auto", seed: int = 0, random_count: int = 256,
             layout_strategy: str = "auto", tunnels: bool = False, layout_timeout: float = 20,
             sequential_trace: dict | None = None, flatten: bool = False, refinement: dict | None = None) -> dict:
     """Convert into a new directory and mark success with a ready manifest.
 
-    Failed candidates and diagnostics remain under work/. Managed replacement
-    and cancellation are handled by the jobs API.
+    Failed candidates and diagnostics remain under work/. Windows Unicode
+    source, include or output paths use a verified ASCII source snapshot.
+    Managed replacement and cancellation are handled by the jobs API.
     """
     root = repository_root()
     require_venv(root)
@@ -219,10 +399,13 @@ def convert(project: Project, output_dir: Path, *, adapter=None, spacing: int = 
     if layout_strategy not in {"auto", "reserved"} or type(tunnels) is not bool:
         raise ConversionError("INVALID_LAYOUT_OPTIONS", "Layout must be auto or reserved, with a Boolean tunnel option")
     if isinstance(layout_timeout, bool) or not isinstance(layout_timeout, (float, int)) or not math.isfinite(layout_timeout) or not 1 <= layout_timeout <= 120:
-        raise ConversionError("INVALID_LAYOUT_OPTIONS", "Layout timeout must be between1 and120 seconds")
+        raise ConversionError("INVALID_LAYOUT_OPTIONS", "Layout timeout must be between 1 and 120 seconds")
     destination = Path(output_dir).resolve()
-    if os.name == "nt" and not str(destination).isascii():
-        raise ConversionError("UNSUPPORTED_PATH", "The current Windows HDL tools require an ASCII output directory path", path=str(destination))
+    if _staging_required(project, destination):
+        return _convert_staged(project, destination, progress=progress, options={
+            "adapter": adapter, "spacing": spacing, "profile": profile, "seed": seed, "random_count": random_count,
+            "layout_strategy": layout_strategy, "tunnels": tunnels, "layout_timeout": layout_timeout,
+            "sequential_trace": sequential_trace, "flatten": flatten, "refinement": refinement})
     try:
         destination.mkdir(parents=True, exist_ok=False)
     except FileExistsError as error:
@@ -329,20 +512,33 @@ def convert(project: Project, output_dir: Path, *, adapter=None, spacing: int = 
                 raise ConversionError("CIRCUIT_VALIDATION", "The reloaded Digital circuit failed component, connection, model, or geometry checks")
             baseline_preview = None
             if refiner.enabled:
-                baseline_preview = render_preview(native, paths, work / "baseline-preview.png",
-                    inspection=inspection, emitted=emitted, scale=_preview_scale(circuit, inspection["instances"]),
+                record = {"layout": layout, "mapped": expected_mapping, "validation": validation,
+                          "inspection": inspection, "emitted": emitted, "paths": paths}
+                if layout.get("tunnels", {}).get("nets"):
+                    from .layout.candidates import verify_candidate
+
+                    def check(candidate, intent, name):
+                        return verify_candidate(intent, candidate, native, work / f"refinement-{name}",
+                                                deadline=time.monotonic() + 60)
+                    # Refine the visible wires, then insert the same validated tunnels.
+                    selected, before = refiner.refine_tunneled(mapped, record, base_layout, check=check, adapter=native)
+                else:
+                    selected, before = refiner.refine(expected_mapping, record), record
+                refiner.close()
+                # The preview before refinement shares the published component identities.
+                baseline_preview = render_preview(native, before["paths"], work / "baseline-preview.png",
+                    inspection=before["inspection"], emitted=before["emitted"],
+                    scale=_preview_scale(before["layout"]["circuit"], before["inspection"]["instances"]),
                     comparison_scope="before_refinement", artifact="baseline_preview")
-                selected = refiner.refine(expected_mapping, {
-                    "layout": layout, "mapped": expected_mapping, "validation": validation,
-                    "inspection": inspection, "emitted": emitted, "paths": paths})
                 layout, validation, inspection = selected["layout"], selected["validation"], selected["inspection"]
                 emitted, paths = selected["emitted"], selected["paths"]
                 circuit = layout["circuit"]
                 validated_hashes = {Path(paths["path"]): emitted["sha256"],
                                     Path(paths["sidecar_path"]): emitted["sidecar_sha256"]}
                 _write(work / "candidate.json", circuit)
+                _write(work / "routing-mapped.json", selected["mapped"])
+                _write(work / "expected-nets.json", selected["mapped"]["nets"])
                 _write(work / "inspection.json", inspection)
-                refiner.close()
                 validation["refinement"] = refiner.report
             advance("validating_behavior")
             if sequential:
@@ -366,7 +562,8 @@ def convert(project: Project, output_dir: Path, *, adapter=None, spacing: int = 
                 reference = simulate_reference(project, design, work / "reference", stimuli)
                 native_stimuli = [{"values": {port["instance_id"]: hex(values[port["port"]]) for port in mapped["inputs"]}}
                                   for values in stimuli]
-                simulation = native.call("circuit.simulate", {**paths, "stimuli": native_stimuli})
+                simulation = simulate_combinational(native, paths, native_stimuli,
+                                                    [port["instance_id"] for port in mapped["outputs"]])
                 behavior = compare_behavior(mapped, stimuli, reference, simulation, coverage=plan["assumptions"])
             _write(work / "reference-samples.json", reference)
             _write(work / "digital-samples.json", simulation)
