@@ -12,7 +12,7 @@ from pathlib import Path
 import subprocess
 
 from ..frontend.errors import FrontendError
-from ..frontend.project import Project
+from ..frontend.project import ICARUS_MACROS, Project, private_macros
 from ..frontend.yosys import _parameter
 from ..ir import validate_design
 from ..runtime import development_toolchain, repository_root
@@ -198,14 +198,18 @@ def _simulate_reference(project: Project, design: dict, workdir: Path,
     module, marker, source = _testbench(project, design, inputs, outputs, stimuli, trace=trace)
     directory.mkdir(parents=True, exist_ok=True)
     testbench = directory / f"{module}.v"
+    macros = directory / f"{module}_macros.v"
     program = directory / f"{module}.vvp"
     compile_log, simulation_log = directory / "reference.compile.log", directory / "reference.simulation.log"
     version_log, provenance = directory / "reference.versions.log", directory / "reference.provenance.json"
-    artifacts = {"testbench": testbench, "program": program, "compile_log": compile_log,
+    artifacts = {"testbench": testbench, "macros": macros, "program": program, "compile_log": compile_log,
                  "simulation_log": simulation_log, "version_log": version_log, "provenance": provenance}
     if any(path in project.sources for path in artifacts.values()):
         raise ReferenceError("REFERENCE_WORKSPACE", "Reference artifacts would overwrite a supplied source; choose another work directory")
     testbench.write_text(source, encoding="utf-8")
+    # Compiled first: Icarus predefines __ICARUS__, which would select code the inspection and Yosys never saw.
+    macros.write_text("".join(f"`undef {name}\n" for name in private_macros(ICARUS_MACROS, project.effective_defines())),
+                      encoding="utf-8")
     toolchain = development_toolchain(repository_root())
     compiler, runtime = toolchain.executable("iverilog"), toolchain.executable("vvp")
     compile_args = [compiler, "-g2005", "-grelative-include", "-s", module, "-o", program.name]
@@ -215,7 +219,7 @@ def _simulate_reference(project: Project, design: dict, workdir: Path,
         compile_args += [f"-D{name}={value}"]
     for include in project.include_dirs:
         compile_args += ["-I", str(include)]
-    compile_args += [str(path) for path in project.sources] + [testbench.name]
+    compile_args += [macros.name] + [str(path) for path in project.sources] + [testbench.name]
     simulation_args = [runtime, program.name]
     versions = {}
     with version_log.open("w", encoding="utf-8") as log:

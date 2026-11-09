@@ -411,6 +411,19 @@ def test_rejections_after_inspection_keep_a_source_location(tmp_path, text, code
         assert "$shiftx" in raised.value.message and raised.value.column >= 1
 
 
+@pytest.mark.parametrize("guard", ["`ifndef __slang__", "`ifndef __slang_major__", "`ifdef __slang__\n`else"])
+@pytest.mark.parametrize("hierarchical", [False, True])
+def test_code_hidden_by_the_inspections_own_macros_is_still_inspected(tmp_path, guard, hierarchical):
+    # Yosys and Icarus never define slang's macros, so the inspection must not skip code they compile.
+    from verilog2digital.frontend.hierarchy import lower_hierarchy
+    source = tmp_path / "hidden.v"
+    source.write_text(f"module hidden(input a, output y);\n  assign y = a;\n{guard}\n  initial $dumpfile(\"hidden.vcd\");\n"
+                      "`endif\nendmodule\n", encoding="utf-8")
+    with pytest.raises(FrontendError) as raised:
+        (lower_hierarchy if hierarchical else lower)(Project([source], top="hidden"), tmp_path / "work")
+    assert raised.value.code == "UNSUPPORTED_INITIALIZATION" and raised.value.line == guard.count("\n") + 4
+
+
 def test_backend_memory_backstop_is_located():
     # Inspection rejects source arrays first; a backend memory must still be located.
     from verilog2digital.frontend.yosys import _normalize_unchecked

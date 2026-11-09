@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 
 from ..frontend.errors import FrontendError
-from ..frontend.project import Project
+from ..frontend.project import SLANG_MACROS, Project, private_macros
 
 MAX_FILES = 1024
 MAX_OCCURRENCES = 512
@@ -42,6 +42,8 @@ def _directives(paths, defines):
     pp = p.parsing.PreprocessorOptions()
     pp.languageVersion = p.LanguageVersion.v1364_2005
     pp.predefines = [f"{name}={value}" for name, value in sorted(defines.items())]
+    # Stage the includes that Yosys and Icarus read, which never see slang's own macros.
+    pp.undefines = private_macros(SLANG_MACROS, defines)
     pp.maxIncludeDepth = 64
     parser = p.parsing.ParserOptions()
     parser.languageVersion = p.LanguageVersion.v1364_2005

@@ -75,6 +75,19 @@ def test_include_resolution_uses_source_relative_then_ordered_directories(tmp_pa
     assert ports["y"] == [ports["a"][0], ports["b"][0]]
 
 
+def test_includes_are_staged_as_yosys_and_icarus_select_them(tmp_path):
+    # slang's own macros are undefined for the snapshot, as for every tool, so it stages the includes they read.
+    shared = write(tmp_path / "shared.vh", "`define EXPR a\n")
+    write(tmp_path / "parser_only.vh", "`define EXPR 1'b0\n")
+    source = write(tmp_path / "top.v", '`ifdef __slang__\n`include "parser_only.vh"\n`else\n`include "shared.vh"\n`endif\n'
+                                        "module top(input a, output y); assign y = `EXPR; endmodule\n")
+    snapshot = snapshot_project(Project([source], top="top"), tmp_path / "job")
+    assert set(snapshot["sources"]) == {str(source.resolve()), str(shared.resolve())}
+    design = lower(snapshot["project"], tmp_path / "lower")
+    ports = {port["name"]: port["bits"] for port in design["ports"]}
+    assert ports["y"] == ports["a"]
+
+
 def test_source_order_empty_defines_inactive_missing_includes_and_line_counts(tmp_path):
     first = write(tmp_path / "順序" / "最初.v", '`define READY\n')
     second = write(tmp_path / "順序" / "次.v", '''`ifdef MISSING

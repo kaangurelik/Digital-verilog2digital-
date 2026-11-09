@@ -13,6 +13,7 @@ import pyslang
 from pyslang import analysis, ast, parsing, syntax
 
 from .errors import FrontendError
+from .project import SLANG_MACROS, private_macros
 
 
 # Allow only syntax supported by the Yosys/Icarus configuration.
@@ -339,6 +340,8 @@ def inspect_sources(sources: list[Path], *, top: str | None = None,
     preprocessing = parsing.PreprocessorOptions()
     preprocessing.languageVersion = pyslang.LanguageVersion.v1364_2005
     preprocessing.predefines = [f"{name}={value}" for name, value in defines.items()]
+    # Yosys and Icarus never define slang's own macros, so they cannot select code this inspection skips.
+    preprocessing.undefines = private_macros(SLANG_MACROS, defines)
     preprocessing.predefineSource = "<v2d-defines>"
     preprocessing.maxIncludeDepth = 64
     parser = parsing.ParserOptions()

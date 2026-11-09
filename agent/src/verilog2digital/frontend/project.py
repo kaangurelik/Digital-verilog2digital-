@@ -8,6 +8,17 @@ import re
 from .errors import FrontendError
 
 
+# Identity macros a tool predefines for itself. Every tool must preprocess one identical design, so each tool
+# undefines its own unless the project defines them for every tool; YOSYS and SYNTHESIS are always shared.
+SLANG_MACROS = ("__slang__", "__slang_major__", "__slang_minor__")
+ICARUS_MACROS = ("__ICARUS__",)
+
+
+def private_macros(names: tuple[str, ...], defines: dict[str, str]) -> list[str]:
+    """A tool's identity macros that the other tools leave undefined; that tool must undefine them."""
+    return [name for name in names if name not in defines]
+
+
 @dataclass
 class Project:
     sources: list[Path]

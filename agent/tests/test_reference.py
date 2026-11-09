@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from verilog2digital.frontend.errors import FrontendError
 from verilog2digital.frontend.project import Project
 from verilog2digital.frontend.yosys import lower
 from verilog2digital.validation.reference import ReferenceError, simulate_reference
@@ -137,6 +138,32 @@ endmodule
     assert by_name["defined"]["bits"] == ["1"]
     result = simulate_reference(project, design, tmp_path / "reference", [{"a": 0}, {"a": 1}])
     assert result["samples"] == [{"values": {"y": 0, "defined": 1}}, {"values": {"y": 1, "defined": 1}}]
+
+
+def test_tool_identity_macros_are_undefined_in_every_frontend(tmp_path):
+    # Icarus predefines __ICARUS__; undefining it keeps the reference on the design that the inspection checked.
+    marker = tmp_path / "simulator only.vcd"
+    source = tmp_path / "identity.v"
+    source.write_text(f'''module identity(input a,output y,icarus);
+  assign y = a;
+`ifdef __ICARUS__
+  assign icarus = 1'b1;
+  initial begin $dumpfile("{marker.as_posix()}"); $dumpvars(0, identity); end
+`else
+  assign icarus = 1'b0;
+`endif
+endmodule
+''', encoding="utf-8")
+    project = Project(sources=[source], top="identity")
+    design = lower(project, tmp_path / "lower")
+    result = simulate_reference(project, design, tmp_path / "reference", [{"a": 0}, {"a": 1}])
+    assert result["samples"] == [{"values": {"y": 0, "icarus": 0}}, {"values": {"y": 1, "icarus": 0}}]
+    assert not marker.exists()
+    assert Path(result["artifacts"]["macros"]).read_text(encoding="utf-8") == "`undef __ICARUS__\n"
+    # Defining the macro defines it for every tool, so the inspection checks the block and rejects it.
+    with pytest.raises(FrontendError) as raised:
+        lower(Project(sources=[source], top="identity", defines={"__ICARUS__": "1"}), tmp_path / "defined")
+    assert raised.value.code == "UNSUPPORTED_INITIALIZATION"
 
 
 def test_escaped_port_identifiers_cannot_become_testbench_syntax(tmp_path):
