@@ -1,7 +1,9 @@
 #define V2D_PORTABLE_LAUNCHER_TEST
 #include "../src/portable_launcher.cpp"
 #include <fstream>
+#include <future>
 #include <iostream>
+#include <thread>
 
 using namespace v2d::portable;
 using namespace std::chrono_literals;
@@ -10,6 +12,79 @@ void Require(bool value, const char* message) { if (!value) throw std::runtime_e
 
 Json Read(const Path& path) {
     std::ifstream stream(path); Json result; stream >> result; return result;
+}
+Json ReadWhenReady(const Path& path, std::chrono::milliseconds timeout) {
+    for (const auto deadline = Clock::now() + timeout;; Sleep(10)) {
+        try { if (std::filesystem::exists(path)) return Read(path); } catch (const std::exception&) {}
+        Require(Clock::now() < deadline, "Fixture process did not report its state");
+    }
+}
+
+// The three pipes an MCP host creates; the launcher ends become its standard handles.
+struct HostPipes {
+    Handle input, inputHost, output, outputHost, error, errorHost;
+    explicit HostPipes(bool inheritable = false) {
+        SECURITY_ATTRIBUTES security{sizeof(security), nullptr, inheritable};
+        for (auto [read, write] : {std::pair{&input, &inputHost}, std::pair{&outputHost, &output}, std::pair{&errorHost, &error}}) {
+            HANDLE r = nullptr, w = nullptr; Check(CreatePipe(&r, &w, &security, 0), "Create host pipe");
+            read->Reset(r); write->Reset(w);
+        }
+        for (auto* host : {&inputHost, &outputHost, &errorHost}) Check(SetHandleInformation(host->Get(), HANDLE_FLAG_INHERIT, 0), "Protect host pipe");
+    }
+    Streams Launcher() const { return {input.Get(), output.Get(), error.Get()}; }
+};
+
+Handle StartHost(const std::vector<std::wstring>& args, const Path& cwd, HostPipes& pipes) {
+    auto command = CommandLine(args); STARTUPINFOW startup{}; startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = pipes.input.Get(); startup.hStdOutput = pipes.output.Get(); startup.hStdError = pipes.error.Get();
+    PROCESS_INFORMATION info{};
+    Check(CreateProcessW(args.front().c_str(),command.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW,nullptr,cwd.c_str(),&startup,&info),"Start MCP host child");
+    Handle thread(info.hThread);
+    pipes.input.Reset(); pipes.output.Reset(); pipes.error.Reset();  // Like a host, keep only its own ends.
+    return Handle(info.hProcess);
+}
+
+void WriteAll(HANDLE pipe, const std::string& bytes) {
+    DWORD written = 0;
+    Check(WriteFile(pipe, bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) && written == bytes.size(), "Write MCP host input");
+}
+
+// Reads up to `count` bytes or end of stream; stalling past the deadline fails the check.
+std::string ReadFor(HANDLE pipe, std::size_t count, std::chrono::milliseconds timeout, bool* ended = nullptr) {
+    std::string data; bool done = false;
+    for (const auto deadline = Clock::now() + timeout; data.size() < count && !done; Sleep(5)) {
+        ReadAvailable(pipe, data, count, done);
+        Require(data.size() >= count || done || Clock::now() < deadline, "MCP stream did not deliver within its deadline");
+    }
+    if (ended) *ended = done;
+    return data;
+}
+
+// Serve blocks for the server's lifetime; run it beside the host side of the test.
+struct Background {
+    std::shared_ptr<std::promise<int>> outcome = std::make_shared<std::promise<int>>();
+    std::future<int> result = outcome->get_future();
+    std::thread worker;
+    template <class Body> explicit Background(Body body) : worker([outcome = outcome, body]() mutable {
+        try { outcome->set_value(body()); } catch (...) { outcome->set_exception(std::current_exception()); } }) {}
+    int Get(std::chrono::milliseconds timeout) {
+        if (result.wait_for(timeout) != std::future_status::ready) { worker.detach(); throw std::runtime_error("Launcher operation exceeded its test deadline"); }
+        worker.join(); return result.get();
+    }
+    ~Background() { if (worker.joinable()) worker.detach(); }
+};
+
+std::string Failure(Background& server, std::chrono::milliseconds timeout) {
+    try { server.Get(timeout); } catch (const std::runtime_error& error) { return error.what(); }
+    return {};
+}
+
+std::vector<std::wstring> McpCommand(const Path& root, const Path& caller, const std::vector<std::wstring>& extra) {
+    std::vector<std::wstring> command{(root/L".tools/python-runtime/python.exe").native(),L"-I",L"-X",L"utf8",(root/L"scripts/portable_bootstrap.py").native(),
+                                      L"--root",root.native(),L"--cwd",caller.native(),L"--mcp"};
+    command.insert(command.end(), extra.begin(), extra.end());
+    return command;
 }
 void Write(const Path& path, const Json& value) {
     std::ofstream stream(path, std::ios::binary); stream << value.dump();
@@ -62,6 +137,18 @@ int Bootstrap(const std::vector<std::wstring>& args) {
         Output(GetStdHandle(STD_OUTPUT_HANDLE),Json{{"argv",values}}.dump()+"\n"); return 0;
     }
     if (scenario=="large-cli") { Output(GetStdHandle(STD_OUTPUT_HANDLE),std::string(2*1024*1024,'x')); return 0; }
+    if (scenario=="mcp-echo") {
+        // A stand-in `v2d mcp`: log to stderr, echo protocol bytes until the host closes input.
+        auto values=Json::array(); for(const auto& arg:args) values.push_back(Path(arg).u8string());
+        Write(root/L"mcp-observed.json",{{"argv",values}});
+        Output(GetStdHandle(STD_ERROR_HANDLE),"diagnostic-\xcf\x80\n");
+        char buffer[4096]; DWORD count=0;
+        while(ReadFile(GetStdHandle(STD_INPUT_HANDLE),buffer,sizeof(buffer),&count,nullptr) && count) {
+            DWORD written=0;
+            if(!WriteFile(GetStdHandle(STD_OUTPUT_HANDLE),buffer,count,&written,nullptr) || written!=count) return 3;
+        }
+        return 7;
+    }
     Output(GetStdHandle(STD_OUTPUT_HANDLE),LaunchPlan(root,Wide(fixture.at("jobs").get<std::string>())).dump()+"\n");
     return 0;
 }
@@ -73,6 +160,8 @@ int main() {
     try {
         if(argc>1 && args[1]==L"--sleep") { Sleep(60000);return 0; }
         if(argc>1 && args[1]==L"-I") return Bootstrap(args);
+        // Acts as VerilogToDigital.exe for a host that owns this process's standard handles.
+        if(argc>2 && args[1]==L"--launch") return Run(Absolute(args[2]),ParseOptions(std::vector<std::wstring>(args.begin()+3,args.end())));
         if(argc>2 && args[1]==L"--root") {
             Path root(args[2]);auto values=Json::array();for(const auto& arg:args)values.push_back(Path(arg).u8string());
             Write(root/L"gui.json",{{"pid",GetCurrentProcessId()},{"argv",values}});
@@ -118,8 +207,16 @@ int main() {
         for(const auto& text:std::vector<std::string>{"{\"schema_version\":1,\"schema_version\":1}",std::string("{\"x\":\"\xff\"}"),std::string(65537,' ')}) {
             bool rejected=false;try{ParsePlan(text,root);}catch(...){rejected=true;}Require(rejected,"Malformed JSON accepted");++checks;
         }
-        for(const auto& arguments:std::vector<std::vector<std::wstring>>{{L"--root",L"C:\\injected"},{L"--cli"},{L"--project"},{L"--doctor",L"--smoke-test"},{L"--doctor",L"--project",L"x"}}) {
+        for(const auto& arguments:std::vector<std::vector<std::wstring>>{{L"--root",L"C:\\injected"},{L"--cli"},{L"--project"},{L"--doctor",L"--smoke-test"},{L"--doctor",L"--project",L"x"},
+                                                                         {L"--doctor",L"--mcp"},{L"--project",L"x",L"--mcp"},{L"--smoke-test",L"--mcp",L"--allow-dir"}}) {
             bool rejected=false;try{ParseOptions(arguments);}catch(...){rejected=true;}Require(rejected,"Invalid launcher options accepted");++checks;
+        }
+        {
+            // `v2d mcp` owns its arguments; a bare --mcp starts it with its defaults.
+            auto mcp=ParseOptions({L"--mcp"});Require(mcp.mode==Options::Mode::Mcp && mcp.cli.empty(),"Bare --mcp was rejected");
+            const std::vector<std::wstring> forwarded{L"--allow-dir",L"C:\\with spaces\\",L"--deadline",L"60",L"--cli"};
+            mcp=ParseOptions({L"--mcp",L"--allow-dir",L"C:\\with spaces\\",L"--deadline",L"60",L"--cli"});
+            Require(mcp.mode==Options::Mode::Mcp && mcp.cli==forwarded,"MCP arguments changed while parsing");++checks;
         }
         {
             // The desktop receives this environment; internal runtime overrides must not reach it.
@@ -167,6 +264,76 @@ int main() {
             Require(rejected,"Bootstrap ownership failure accepted");
             if(std::string(scenario)!="flood") {auto pids=Read(root/L"children.json");NotRunning(pids["parent"]);NotRunning(pids["child"]);}
             ++checks;
+        }
+        {
+            // Without host protocol streams nothing starts: no bootstrap, no message box.
+            fixture("mcp-echo");std::filesystem::remove(root/L"observed.json");
+            for(const auto& streams:{Streams{nullptr,nullptr,nullptr},Streams{INVALID_HANDLE_VALUE,INVALID_HANDLE_VALUE,nullptr}}) {
+                bool rejected=false;try{Serve(McpCommand(root,root,{}),root,Environment(root),streams);}catch(const std::runtime_error&){rejected=true;}
+                Require(rejected,"MCP mode started without host protocol streams");
+            }
+            Require(!std::filesystem::exists(root/L"observed.json"),"MCP bootstrap started without host protocol streams");++checks;
+        }
+        {
+            // Each request is answered while input stays open, byte for byte, with a NUL log sink.
+            fixture("mcp-echo");HostPipes pipes;
+            Background server([&]{return Serve(McpCommand(root,root,{}),root,Environment(root),{pipes.input.Get(),pipes.output.Get(),nullptr});});
+            const std::string request="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}\n";
+            WriteAll(pipes.inputHost.Get(),request);
+            Require(ReadFor(pipes.outputHost.Get(),request.size(),10s)==request,"MCP request was not passed through live");
+            std::string binary;for(int round=0;round<3;++round)for(int value=0;value<256;++value)binary.push_back(static_cast<char>(value));
+            binary+="\r\n\x1a\r\r\n\xef\xbb\xbf";
+            WriteAll(pipes.inputHost.Get(),binary);
+            Require(ReadFor(pipes.outputHost.Get(),binary.size(),10s)==binary,"MCP bytes changed in transit");
+            pipes.inputHost.Reset();
+            Require(server.Get(10s)==7,"MCP server exit code was not propagated");++checks;
+        }
+        {
+            // A server that ignores its closed input is stopped with its descendants after the grace period.
+            fixture("hang");std::filesystem::remove(root/L"children.json");HostPipes pipes;
+            Background server([&]{return Serve(McpCommand(root,root,{}),root,Environment(root),pipes.Launcher(),300ms);});
+            auto pids=ReadWhenReady(root/L"children.json",10s);
+            pipes.inputHost.Reset();
+            Require(Failure(server,15s).find("after its input closed")!=std::string::npos,"MCP server outlived its closed input");
+            NotRunning(pids["parent"]);NotRunning(pids["child"]);++checks;
+        }
+        {
+            fixture("leak");std::filesystem::remove(root/L"children.json");HostPipes pipes;
+            Background server([&]{return Serve(McpCommand(root,root,{}),root,Environment(root),pipes.Launcher());});
+            Require(Failure(server,15s).find("live descendant")!=std::string::npos,"MCP server exit left a live descendant");
+            NotRunning(ReadWhenReady(root/L"children.json",1s)["child"]);++checks;
+        }
+        {
+            // A real host process: Run() forwards caller cwd and arguments, stdout carries only the
+            // server's bytes, stderr carries its log, and the server's exit code is returned.
+            fixture("mcp-echo");HostPipes pipes(true);
+            auto caller=Absolute(base/L"mcp-host-\u0131\u015f-\u03c0");std::filesystem::create_directories(caller);
+            const std::vector<std::wstring> extra{L"--allow-dir",L"relative dir \u03c0",L"--deadline",L"60",L"a\"b\\"};
+            std::vector<std::wstring> host{Executable().native(),L"--launch",root.native(),L"--mcp"};host.insert(host.end(),extra.begin(),extra.end());
+            auto launcher=StartHost(host,caller,pipes);
+            struct StopHost { HANDLE process; ~StopHost(){ if(WaitForSingleObject(process,0)==WAIT_TIMEOUT) TerminateProcess(process,1); } } guard{launcher.Get()};
+            const std::string request="{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"name\":\"\xcf\x80\"}}\n";
+            WriteAll(pipes.inputHost.Get(),request);
+            Require(ReadFor(pipes.outputHost.Get(),request.size(),20s)==request,"Launcher did not pass the protocol stream through live");
+            pipes.inputHost.Reset();
+            Require(WaitForSingleObject(launcher.Get(),10000)==WAIT_OBJECT_0,"Launcher did not exit after its host closed input");
+            DWORD code=0;Check(GetExitCodeProcess(launcher.Get(),&code),"Read launcher exit code");Require(code==7,"Launcher changed the MCP server exit code");
+            bool ended=false;Require(ReadFor(pipes.outputHost.Get(),1,5s,&ended).empty() && ended,"Launcher or bootstrap wrote non-protocol bytes");
+            Require(ReadFor(pipes.errorHost.Get(),65536,5s,&ended).find("diagnostic-\xcf\x80\n")!=std::string::npos && ended,"Server log did not reach the host's stderr");
+            auto argv=Read(root/L"mcp-observed.json")["argv"];
+            Require(argv.size()==10+extra.size() && argv[5]=="--root" && argv[6]==root.u8string() && argv[7]=="--cwd"
+                    && argv[8]==caller.u8string() && argv[9]=="--mcp","MCP bootstrap invocation changed");
+            for(std::size_t i=0;i<extra.size();++i)Require(argv[10+i]==Path(extra[i]).u8string(),"MCP argument changed");
+            Require(Read(root/L"observed.json")["cwd"]==root.u8string(),"MCP bootstrap left its private package cwd");++checks;
+        }
+        {
+            // A host that terminates the launcher also ends the bootstrap, server and descendants.
+            fixture("hang");std::filesystem::remove(root/L"children.json");HostPipes pipes(true);
+            auto launcher=StartHost({Executable().native(),L"--launch",root.native(),L"--mcp"},root,pipes);
+            auto pids=ReadWhenReady(root/L"children.json",10s);
+            Check(TerminateProcess(launcher.Get(),1),"Terminate MCP launcher");
+            Require(WaitForSingleObject(launcher.Get(),5000)==WAIT_OBJECT_0,"MCP launcher did not stop");
+            NotRunning(pids["parent"]);NotRunning(pids["child"]);++checks;
         }
         fixture("valid");Options options;options.mode=Options::Mode::Smoke;options.project=root/L"project-\u03c0.json";
         Require(Run(root,options)==0,"End-to-end bootstrap/smoke handoff failed");

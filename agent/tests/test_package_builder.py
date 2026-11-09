@@ -1,7 +1,9 @@
 """Release publication preserves exact inputs and never packages mutable extras."""
+import importlib.metadata
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 from types import SimpleNamespace
 import zipfile
@@ -111,6 +113,24 @@ def test_existing_archive_refused_before_directory_publication(tmp_path, monkeyp
     assert sorted(parent.iterdir()) == [archive]
 
 
+def test_distributable_archive_requires_license_texts_of_statically_linked_components(tmp_path, monkeypatch):
+    inventory = json.loads((ROOT / "scripts/release-licenses.json").read_text(encoding="utf-8"))
+    # Recorded gaps: OpenSSL and Rust crates in cryptography, libffi in cffi, Rust crates in pydantic_core and rpds-py.
+    assert {"cffi 2.1.1: libffi", "cryptography 50.0.2: OpenSSL 4.0.3"} <= set(builder.missing_notices(inventory))
+    root = tmp_path / "workspace"
+    (root / "scripts").mkdir(parents=True)
+    package = {"name": "example", "version": "1.0", "bundled_components": [
+        {"name": "zlib", "linkage": "static", "notice": {"kind": "not_in_distribution", "note": "no text"}}]}
+    (root / "scripts/release-licenses.json").write_text(json.dumps({"python_packages": [package]}), encoding="utf-8")
+    monkeypatch.setattr(builder, "ROOT", root)
+    monkeypatch.setattr(builder.sys, "prefix", str(root / ".venv"))
+    with pytest.raises(RuntimeError, match="example 1.0: zlib"):
+        builder.assemble(root / "dist/release", archive=True)
+    assert sorted((root / "dist").iterdir()) == []
+    package["bundled_components"][0]["notice"] = {"kind": "file", "target": "licenses/zlib/LICENSE"}
+    assert builder.missing_notices({"python_packages": [package]}) == []
+
+
 def test_global_dependency_metadata_is_rejected_before_copy(tmp_path, monkeypatch):
     site = tmp_path / ".venv/Lib/site-packages"
     site.mkdir(parents=True)
@@ -216,3 +236,137 @@ def test_archive_times_follow_content_so_stale_bytecode_cannot_match_an_edited_s
     # Same size, different bytes: an earlier release's timestamp-validated pyc must not apply.
     assert times["release/agent/old.py"] == times["release/agent/copy.py"] != times["release/agent/edited.py"]
     assert all(time[:3] == (2026, 1, 1) for time in times.values())
+
+
+def canonical(name):
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def test_production_packages_are_the_installed_lock_pinned_runtime_closure():
+    closure = builder.runtime_closure()
+    assert list(closure) == sorted(builder.PRODUCTION_PACKAGES) and len(closure) == 30
+    # pyjwt[crypto] and the win32 marker are what pull these in.
+    assert {"cryptography", "cffi", "pycparser", "pywin32"} <= set(closure) and closure["mcp"] == "2.3.0"
+    pins = builder.locked_versions()
+    assert all(pins[name] == version for name, version in closure.items())
+
+
+def test_dependency_lock_pins_exactly_the_installed_environment():
+    installed = {canonical(item.metadata["Name"]): item.version for item in importlib.metadata.distributions()}
+    for name in ("pip", "verilog2digital"):
+        installed.pop(name, None)
+    assert builder.locked_versions() == installed
+
+
+def _project(root, dependencies, lock):
+    (root / "agent").mkdir(parents=True, exist_ok=True)
+    (root / "agent/pyproject.toml").write_text("[project]\nname = \"probe\"\ndependencies = " + json.dumps(dependencies) + "\n", encoding="utf-8")
+    (root / "agent/requirements-dev.lock").write_text(lock, encoding="utf-8")
+
+
+def test_runtime_closure_rejects_missing_unexpected_and_unpinned_distributions(tmp_path, monkeypatch):
+    lock = (ROOT / "agent/requirements-dev.lock").read_text(encoding="utf-8")
+    declared = ["jsonschema==4.26.0", "mcp==2.3.0", "pyslang==11.0.0"]
+    _project(tmp_path, declared, lock)
+    monkeypatch.setattr(builder, "ROOT", tmp_path)
+    assert set(builder.runtime_closure()) == set(builder.PRODUCTION_PACKAGES)
+    production = builder.PRODUCTION_PACKAGES
+    monkeypatch.setattr(builder, "PRODUCTION_PACKAGES", tuple(name for name in production if name != "pywin32"))
+    with pytest.raises(ValueError, match="missing: pywin32;"):
+        builder.runtime_closure()
+    monkeypatch.setattr(builder, "PRODUCTION_PACKAGES", (*production, "pytest"))
+    with pytest.raises(ValueError, match="unexpected: pytest"):
+        builder.runtime_closure()
+    monkeypatch.setattr(builder, "PRODUCTION_PACKAGES", production)
+    for changed, message in ((lock.replace("pywin32==312\n", ""), "pywin32 312 differs"), (lock.replace("mcp==2.3.0", "mcp==2.2.0"), "mcp 2.3.0 differs"),
+                             (lock + "mcp==2.3.0\n", "unique exact pins"), (lock.replace("anyio==4.15.1", "anyio>=4"), "unique exact pins")):
+        _project(tmp_path, declared, changed)
+        with pytest.raises(ValueError, match=message):
+            builder.runtime_closure()
+    _project(tmp_path, ["jsonschema==4.26.0", "mcp==2.2.0", "pyslang==11.0.0"], lock)
+    with pytest.raises(ValueError, match="does not satisfy mcp==2.2.0"):
+        builder.runtime_closure()
+
+
+def test_only_the_reviewed_pth_startup_hook_is_packaged(tmp_path, monkeypatch):
+    site = tmp_path / ".venv/Lib/site-packages"
+    for name, data in (("hooked/__init__.py", b""), ("pywin32.pth", b"win32\nimport pywin32_bootstrap\n"), ("injected.pth", b"import os\n")):
+        (site / name).parent.mkdir(parents=True, exist_ok=True)
+        (site / name).write_bytes(data)
+    records = ["hooked/__init__.py", "pywin32.pth"]
+    monkeypatch.setattr(builder, "ROOT", tmp_path)
+    monkeypatch.setattr(builder, "PRODUCTION_PACKAGES", ("hooked",))
+    monkeypatch.setattr(builder.importlib.metadata, "distribution", lambda name:
+        SimpleNamespace(locate_file=lambda record: site / record, files=list(records)))
+    contents = builder.Contents()
+    builder.dependencies(contents)
+    assert ".venv/Lib/site-packages/pywin32.pth" in contents.files
+    records.append("injected.pth")
+    with pytest.raises(ValueError, match="startup hooks differ from the reviewed set: injected.pth"):
+        builder.dependencies(builder.Contents())
+    records[:] = ["hooked/__init__.py"]
+    with pytest.raises(ValueError, match="reviewed set: pywin32.pth"):
+        builder.dependencies(builder.Contents())
+
+
+def _inventory_document():
+    return json.loads((ROOT / "scripts/release-licenses.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("name", builder.PRODUCTION_PACKAGES)
+def test_every_installed_notice_of_a_production_distribution_is_inventoried(name):
+    inventory = _inventory_document()
+    distribution = importlib.metadata.distribution(name)
+    metadata = next(record for record in distribution.files if record.name == "METADATA" and record.parent.name.endswith(".dist-info"))
+    info = Path(distribution.locate_file(metadata)).parent
+    entry = next(item for item in inventory["python_packages"] if canonical(item["name"]) == canonical(name))
+    assert entry["version"] == distribution.version
+    records = {record["source"].get("path"): record for record in inventory["files"]}
+    notices = []
+    for path in (path for folder in ("licenses", "sboms") for path in (info / folder).rglob("*") if path.is_file()):
+        record = records[path.relative_to(ROOT).as_posix()]
+        relative = path.relative_to(info).as_posix()
+        assert record["target"] == f"licenses/python/{entry['name']}/{info.name}/{relative}"
+        assert record["sha256"] == builder.sha256(path) and record["bytes"] == path.stat().st_size
+        assert record["kind"] == ("notice" if relative.startswith("licenses/") else "provenance")
+        staged = ROOT / record["staged_path"]
+        if staged.exists():
+            assert staged.read_bytes() == path.read_bytes()
+        if record["kind"] == "notice":
+            notices.append(record["target"])
+    assert notices and sorted(entry["notice_files"]) == sorted(notices) and len(set(notices)) == len(notices)
+    targets = {record["target"] for record in inventory["files"]}
+    for component in entry.get("bundled_components", ()):
+        assert component["notice"]["kind"] == "not_in_distribution" and set(component.get("evidence", ())) <= targets
+
+
+@pytest.mark.parametrize("failures,code,published", [(2, 32, True), (3, 5, True), (1, 2, False), (99, 33, False)])
+def test_publication_retries_only_bounded_windows_sharing_errors(tmp_path, monkeypatch, failures, code, published):
+    source = tmp_path / "private"
+    source.mkdir()
+    (source / "native.dll").write_bytes(b"verified")
+    destination, original, calls, clock = tmp_path / "release", Path.rename, [], [0.0]
+    def rename(path, target):
+        calls.append(target)
+        if len(calls) <= failures:
+            error = PermissionError("held by a scanner")
+            error.winerror = code
+            raise error
+        return original(path, target)
+    monkeypatch.setattr(Path, "rename", rename)
+    monkeypatch.setattr(builder, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(builder, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
+    if published:
+        builder.publish(source, destination)
+        assert (destination / "native.dll").read_bytes() == b"verified" and len(calls) == failures + 1
+    else:
+        with pytest.raises(PermissionError):
+            builder.publish(source, destination, seconds=5)
+        assert source.is_dir() and not destination.exists()
+        assert len(calls) == 1 if code == 2 else clock[0] >= 5
+
+
+def test_third_party_notices_name_every_inventoried_python_distribution():
+    text = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    for entry in _inventory_document()["python_packages"]:
+        assert entry["name"] in text and entry["version"] in text, entry["name"]

@@ -437,3 +437,95 @@ def test_bootstrap_rejects_global_base_even_when_prefix_claims_venv(bootstrap, p
     with pytest.raises(FrontendError) as caught:
         bootstrap._private_process(root, virtual=True)
     assert caught.value.code == "PYTHON_ISOLATION"
+
+
+def test_bootstrap_probe_lists_agree_with_the_builder_and_independent_audit(bootstrap, monkeypatch):
+    spec = importlib.util.spec_from_file_location("portable_probe_builder", ROOT / "scripts/package.py")
+    builder = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, builder)  # Its dataclasses resolve through sys.modules.
+    spec.loader.exec_module(builder)
+    audit = load_script("portable_probe_audit", ROOT / "scripts/check_release.py")
+    assert set(bootstrap.DISTRIBUTIONS) == set(builder.PRODUCTION_PACKAGES) == audit.PRODUCTION_PACKAGES
+    assert set(release.PRODUCTION) <= set(bootstrap.DISTRIBUTIONS) and set(bootstrap.MODULES) == set(bootstrap.DISTRIBUTIONS)
+    assert "pywintypes314.dll" in bootstrap.RUNTIME_DLLS
+
+
+def test_bootstrap_probe_imports_every_distribution_and_the_mcp_transport_from_the_venv(bootstrap):
+    site = (ROOT / ".venv/Lib/site-packages").resolve(strict=True)
+    packages = bootstrap._packages(site)
+    assert list(packages) == list(bootstrap.DISTRIBUTIONS)
+    assert all(Path(entry["path"]).is_relative_to(site) for entry in packages.values())
+    assert packages["mcp"]["version"] == "2.3.0"
+    # Native parts load with the probe: Rust/OpenSSL, pydantic-core, cffi and pywin32 via pywin32.pth.
+    for module in ("cryptography.hazmat.bindings._rust", "pydantic_core._pydantic_core", "_cffi_backend", "win32job",
+                   "win32api", "pywintypes", "mcp.server.stdio"):
+        assert Path(sys.modules[module].__file__).resolve().is_relative_to(site), module
+
+
+def test_bootstrap_probe_rejects_a_production_module_outside_the_private_venv(bootstrap, tmp_path, monkeypatch):
+    with pytest.raises(FrontendError) as caught:
+        bootstrap._packages(tmp_path)
+    assert caught.value.code == "PYTHON_ISOLATION"
+    monkeypatch.setattr(bootstrap, "DISTRIBUTIONS", (*bootstrap.DISTRIBUTIONS, "unprobed-distribution"))
+    with pytest.raises(FrontendError, match="No import probe"):
+        bootstrap._packages((ROOT / ".venv/Lib/site-packages").resolve())
+
+
+@pytest.mark.parametrize("arguments", [[], ["--allow-dir", "relative \u03a9", "--deadline", "60", "--memory-mib", "4096", "--java-heap-mib", "512"]])
+def test_bootstrap_mcp_hands_the_host_streams_to_v2d_mcp(bootstrap, package, tmp_path, monkeypatch, capsys, arguments):
+    root, _ = package
+    caller = tmp_path / "host \u03a9"
+    caller.mkdir()
+    monkeypatch.setattr(bootstrap, "ROOT", root)
+    monkeypatch.setattr(bootstrap, "prepare", lambda _: ({}, {"private": "yes"}))
+    calls = []
+    monkeypatch.setattr(bootstrap.subprocess, "run", lambda *a, **k: calls.append((a, k)) or SimpleNamespace(returncode=5))
+    assert bootstrap.main(["--root", str(root), "--cwd", str(caller), "--mcp", *arguments]) == 5
+    (command,), options = calls[0]
+    assert command[1:] == ["-I", "-X", "utf8", "-B", str(root / "scripts/v2d.py"), "mcp", *arguments]
+    # Protocol streams pass through: no capture, NUL input, deadline or rewritten cwd.
+    assert options["stdin"] is bootstrap.sys.stdin and options["stdout"] is bootstrap.sys.stdout and options["stderr"] is bootstrap.sys.stderr
+    assert options["timeout"] is None and options["cwd"] == caller and options["env"] == {"private": "yes"} and "capture_output" not in options
+    assert capsys.readouterr().out == ""
+
+
+def test_bootstrap_mcp_reports_failures_on_stderr_only(bootstrap, package, monkeypatch, capsys):
+    root, _ = package
+    monkeypatch.setattr(bootstrap, "ROOT", root)
+    def refuse(_):
+        raise FrontendError("RELEASE_CHANGED", "A packaged runtime file differs from its release hash")
+    monkeypatch.setattr(bootstrap, "prepare", refuse)
+    monkeypatch.setattr(bootstrap.subprocess, "run", lambda *a, **k: pytest.fail("refused release started a server"))
+    assert bootstrap.main(["--root", str(root), "--mcp", "--allow-dir", "x"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert json.loads(captured.err)["diagnostic"]["code"] == "RELEASE_CHANGED"
+    assert bootstrap.main(["--root", str(root), "--cwd", str(root), "--doctor"]) == 1
+    assert json.loads(capsys.readouterr().out)["diagnostic"]["code"] == "BOOTSTRAP_ARGUMENT"
+
+
+def test_hidden_mcp_passthrough_is_live_and_binary_safe(tmp_path):
+    server = tmp_path / "echo.py"
+    server.write_text("import sys\nwhile block := sys.stdin.buffer.readline():\n    sys.stdout.buffer.write(block)\n    sys.stdout.buffer.flush()\n"
+                      "print('log-' + chr(960), file=sys.stderr)\nraise SystemExit(3)\n", encoding="utf-8")
+    helper = tmp_path / "serve.py"
+    helper.write_text("import importlib.util, os, sys\nfrom pathlib import Path\n"
+        f"root, server = Path({str(ROOT)!r}), {str(server)!r}\n"
+        "spec = importlib.util.spec_from_file_location('bootstrap', root / 'scripts/portable_bootstrap.py')\n"
+        "module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\n"
+        "raise SystemExit(module._run(root, [server], dict(os.environ), stdin=sys.stdin).returncode)\n", encoding="utf-8")
+    process = subprocess.Popen([sys.executable, "-I", "-X", "utf8", str(helper)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        first = b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"name":"\xcf\x80"}}\n'
+        process.stdin.write(first); process.stdin.flush()
+        assert process.stdout.readline() == first  # Answered while the host keeps stdin open.
+        binary = bytes(range(256)).replace(b"\n", b"") + b"\r\x1a\x00\xff\xfe\r\n"
+        process.stdin.write(binary); process.stdin.close()
+        assert process.stdout.read() == binary
+        assert process.wait(20) == 3
+        assert process.stderr.read().decode("utf-8").strip() == "log-\u03c0"
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(10)

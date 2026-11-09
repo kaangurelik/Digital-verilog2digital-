@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -87,18 +88,24 @@ def test_independent_isolation_audit_requires_all_distributions_and_private_audi
     native = file(".venv/Lib/site-packages/pyslang/_pyslang.pyd")
     python_dll = file(".tools/python-runtime/python314.dll")
     vc_dll = file(".tools/python-runtime/vcruntime140.dll")
+    pywin32_dll = file(".venv/Lib/site-packages/pywin32_system32/pywintypes314.dll")
     packages = {name: {"version": "test", "path": file(".venv/Lib/site-packages/" + name + "/__init__.py")}
                 for name in check.PRODUCTION_PACKAGES}
     bootstrap = {"root": str(package), "release": {"sha256": "a" * 64}, "job_root": str(tmp_path / "jobs"),
         "native_tools_root": str(package / ".tools"), "isolation": {"executable": executable, "prefix": str(package / ".venv"),
             "base_prefix": str(package / ".tools/python-runtime"), "stdlib": stdlib, "packages": packages,
-            "native_modules": {"pyslang": native}, "loaded_dlls": {"python314.dll": python_dll, "vcruntime140.dll": vc_dll}}}
+            "native_modules": {"pyslang": native, "pywintypes": pywin32_dll},
+            "loaded_dlls": {"python314.dll": python_dll, "vcruntime140.dll": vc_dll, "pywintypes314.dll": pywin32_dll}}}
     doctor = {"state": "ready", "bootstrap": bootstrap, "tools": {"python": {"path": executable, "available": True}},
               "fingerprint": {"sha256": "b" * 64}}
     check.audit_isolation(doctor, package)
-    missing = deepcopy(doctor); del missing["bootstrap"]["isolation"]["packages"]["attrs"]
-    with pytest.raises(RuntimeError, match="production distribution"):
-        check.audit_isolation(missing, package)
+    for name in ("attrs", "mcp", "pywin32", "cryptography"):
+        missing = deepcopy(doctor); del missing["bootstrap"]["isolation"]["packages"][name]
+        with pytest.raises(RuntimeError, match="production distribution"):
+            check.audit_isolation(missing, package)
+    unbound = deepcopy(doctor); del unbound["bootstrap"]["isolation"]["loaded_dlls"]["pywintypes314.dll"]
+    with pytest.raises(RuntimeError, match="pywin32's private DLL"):
+        check.audit_isolation(unbound, package)
     external = tmp_path / "external-vcruntime140.dll"; external.write_bytes(b"outside")
     doctor["bootstrap"]["isolation"]["loaded_dlls"]["vcruntime140.dll"] = str(external)
     with pytest.raises(RuntimeError, match="External audited DLL"):
@@ -269,3 +276,111 @@ def test_combined_journey_deadline_override_keeps_owned_cleanup(tmp_path, monkey
     assert record["harness_deadline_seconds"] == (override or 360)
     assert record["valid"] is passes
     assert record["closed_metrics"]["active_processes"] == 0
+
+
+FAKE_MCP = r'''import json, sys, time
+mode, calls = sys.argv[1], 0
+tools = [{"name": "inspect", "inputSchema": {"type": "object"}}, {"name": "convert", "inputSchema": {"type": "object"}}]
+if mode == "banner":
+    print("server ready", flush=True)
+for line in sys.stdin:
+    message = json.loads(line)
+    if "id" not in message:
+        continue
+    method, modern = message["method"], "_meta" in message.get("params", {})
+    if method == "initialize":
+        result = {"protocolVersion": "2025-11-25", "capabilities": {"tools": {}}, "serverInfo": {"name": "fake", "version": "0"}}
+    elif method == "server/discover":
+        result = {"supportedVersions": ["2026-07-28"], "capabilities": {"tools": {}}, "cacheScope": "public", "ttlMs": 0}
+    else:
+        calls += 1
+        if mode == "ping":
+            print(json.dumps({"jsonrpc": "2.0", "id": "server-ping", "method": "ping"}), flush=True)
+            if json.loads(sys.stdin.readline()) != {"jsonrpc": "2.0", "id": "server-ping", "result": {}}:
+                raise SystemExit(9)
+        result = {"tools": tools[::-1] if mode == "shuffle" and calls % 2 == 0 else tools}
+    if modern:
+        result["resultType"] = "complete"
+    print(json.dumps({"jsonrpc": "2.0", "id": message["id"], "result": result}), flush=True)
+if mode == "linger":
+    time.sleep(60)
+'''
+
+SDK_MCP = '''from mcp.server.mcpserver import MCPServer
+server = MCPServer("release-check-probe")
+
+@server.tool()
+def inspect_design(path: str) -> str:
+    """Inspect a design."""
+    return path
+
+@server.tool()
+def convert_design(path: str, top: str) -> str:
+    """Convert a design."""
+    return top
+
+server.run("stdio")
+'''
+
+
+def _mcp_server(tmp_path, source, *arguments):
+    script = tmp_path / "server.py"
+    script.write_text(source, encoding="utf-8")
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    return [sys.executable, "-I", str(script), *arguments], evidence
+
+
+@pytest.mark.parametrize("mode", ["ok", "ping"])
+def test_mcp_acceptance_covers_both_eras_and_both_host_shutdown_paths(tmp_path, mode):
+    command, evidence = _mcp_server(tmp_path, FAKE_MCP, mode)
+    report = check.mcp_acceptance(command, evidence, startup=30, step=30, shutdown=20)
+    assert report["valid"] and report["sessions"]["2025-11-25"]["tools"] == report["sessions"]["2026-07-28"]["tools"] == ["inspect", "convert"]
+    assert report["sessions"]["2025-11-25"]["exit_code"] == report["sessions"]["2026-07-28"]["exit_code"] == 0
+    assert report["sessions"]["terminated"]["exit_code"] != 0
+
+
+def test_mcp_acceptance_requests_match_the_installed_sdk_server(tmp_path):
+    command, evidence = _mcp_server(tmp_path, SDK_MCP)
+    report = check.mcp_acceptance(command, evidence, startup=60, step=30, shutdown=20)
+    sessions = report["sessions"]
+    assert sessions["2025-11-25"]["tools"] == sessions["2026-07-28"]["tools"] == ["inspect_design", "convert_design"]
+    assert "2026-07-28" in sessions["2026-07-28"]["supported_versions"] and sessions["2025-11-25"]["server"]["name"] == "release-check-probe"
+
+
+@pytest.mark.parametrize("mode,message", [("banner", "MCP stdout closed: .*JSON"), ("shuffle", "changed between identical calls"),
+                                          ("linger", "did not exit within 2 s after its host closed stdin")])
+def test_mcp_acceptance_rejects_stdout_noise_unstable_tools_and_lingering_servers(tmp_path, mode, message):
+    command, evidence = _mcp_server(tmp_path, FAKE_MCP, mode)
+    with pytest.raises(RuntimeError, match=message):
+        check.mcp_acceptance(command, evidence, startup=30, step=30, shutdown=2)
+
+
+def test_hidden_mcp_host_always_reports_a_verdict_document(tmp_path, monkeypatch, capsys):
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    arguments = ["--_mcp-host", "--launcher", str(tmp_path / "missing launcher.exe"), "--allow-dir", str(tmp_path), "--evidence", str(evidence)]
+    assert check.main(arguments) == 0
+    verdict = json.loads(capsys.readouterr().out)
+    assert verdict["valid"] is False and verdict["error"]["type"] == "FileNotFoundError"
+    monkeypatch.setattr(check, "mcp_acceptance", lambda command, evidence: {"valid": True, "command": list(map(str, command))})
+    assert check.main(arguments) == 0
+    assert json.loads(capsys.readouterr().out)["command"][1:] == ["--mcp", "--allow-dir", str(tmp_path)]
+
+
+def test_mcp_check_runs_the_host_as_an_owned_harness_worker(tmp_path):
+    calls = []
+    class Runner:
+        verdict = {"valid": True, "sessions": {}}
+        def command(self, package, name, arguments, **options):
+            calls.append((package, name, arguments, options))
+            return self.verdict
+    root = tmp_path / "Kurulum \u03c0"
+    root.mkdir()
+    assert check.mcp_check(Runner(), root, "unicode", tmp_path / "projects", tmp_path)["valid"]
+    package, name, arguments, options = calls[0]
+    assert package == root and name == "unicode-mcp" and options["executable"] == sys.executable and "--_mcp-host" in arguments
+    assert arguments[arguments.index("--launcher") + 1] == root / "VerilogToDigital.exe"
+    Runner.verdict = {"valid": False, "error": {"message": "stdout carried noise"}}
+    with pytest.raises(RuntimeError, match="stdout carried noise"):
+        check.mcp_check(Runner(), root, "ascii", tmp_path / "projects", tmp_path)

@@ -19,6 +19,22 @@ sys.path.insert(0, str(ROOT / "agent/src"))
 from verilog2digital.release import (PRODUCTION, FrontendError, _hash_file, job_root,
                                     _verify_mirror, ensure_native_mirror, native_tools_root, relative_file, verify_release)
 
+# Each production distribution is imported through a module that loads its native code, if any.
+MODULES = {"attrs": "attrs", "jsonschema": "jsonschema", "jsonschema-specifications": "jsonschema_specifications",
+           "pyslang": "pyslang", "referencing": "referencing", "rpds-py": "rpds", "annotated-types": "annotated_types",
+           "anyio": "anyio", "cffi": "_cffi_backend", "click": "click", "cryptography": "cryptography.hazmat.bindings._rust",
+           "h11": "h11", "httpcore2": "httpcore2", "httpx2": "httpx2", "idna": "idna", "mcp": "mcp.server.mcpserver",
+           "mcp-types": "mcp_types", "opentelemetry-api": "opentelemetry.trace", "pycparser": "pycparser",
+           "pydantic": "pydantic", "pydantic-core": "pydantic_core._pydantic_core", "pyjwt": "jwt",
+           "python-multipart": "python_multipart", "pywin32": "win32job", "sse-starlette": "sse_starlette",
+           "starlette": "starlette", "truststore": "truststore", "typing-extensions": "typing_extensions",
+           "typing-inspection": "typing_inspection", "uvicorn": "uvicorn"}
+# The MCP server's runtime closure, beyond the converter's own release.PRODUCTION.
+MCP_RUNTIME = tuple(name for name in MODULES if name not in PRODUCTION)
+DISTRIBUTIONS = tuple(dict.fromkeys((*PRODUCTION, *MCP_RUNTIME)))
+RUNTIME_DLLS = ("python314.dll", "python3.dll", "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll",
+                "msvcp140_atomic_wait.dll", "pywintypes314.dll", "pythoncom314.dll")
+
 
 def _private_process(root, *, virtual=False):
     wanted = root / (".venv" if virtual else ".tools/python-runtime")
@@ -46,18 +62,25 @@ def _clean_environment(root, jobs, tools):
     return env
 
 
-def _probe(root):
-    _private_process(root, virtual=True)
-    site = root / ".venv/Lib/site-packages"
+def _packages(site):
     packages = {}
-    modules = {"attrs": "attrs", "jsonschema": "jsonschema", "jsonschema-specifications": "jsonschema_specifications",
-               "pyslang": "pyslang", "referencing": "referencing", "rpds-py": "rpds"}
-    for distribution in PRODUCTION:
-        module = importlib.import_module(modules[distribution])
+    for distribution in DISTRIBUTIONS:
+        if distribution not in MODULES:
+            raise FrontendError("PYTHON_ISOLATION", "No import probe is defined for production distribution " + distribution)
+        module = importlib.import_module(MODULES[distribution])
         path = Path(module.__file__).resolve(strict=True)
         if not path.is_relative_to(site):
             raise FrontendError("PYTHON_ISOLATION", "A production package loaded outside the private venv", path=str(path))
         packages[distribution] = {"version": importlib.metadata.version(distribution), "path": str(path)}
+    # The stdio transport loads pywin32's handle and job modules through pywin32.pth.
+    importlib.import_module("mcp.server.stdio")
+    return packages
+
+
+def _probe(root):
+    _private_process(root, virtual=True)
+    site = root / ".venv/Lib/site-packages"
+    packages = _packages(site)
     native = {}
     for name, module in list(sys.modules.items()):
         path = getattr(module, "__file__", None)
@@ -74,7 +97,7 @@ def _probe(root):
         kernel.GetModuleHandleW.restype = wintypes.HMODULE
         kernel.GetModuleFileNameW.argtypes = [wintypes.HMODULE, wintypes.LPWSTR, wintypes.DWORD]
         kernel.GetModuleFileNameW.restype = wintypes.DWORD
-        for name in ("python314.dll", "python3.dll", "vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll", "msvcp140_atomic_wait.dll"):
+        for name in RUNTIME_DLLS:
             handle = kernel.GetModuleHandleW(name)
             if handle:
                 buffer = ctypes.create_unicode_buffer(32768)
@@ -93,12 +116,17 @@ def _probe(root):
             "native_modules": native, "loaded_dlls": loaded}
 
 
-def _run(root, args, environment, *, capture=False, timeout=None, cwd=None):
+def _run(root, args, environment, *, capture=False, timeout=None, cwd=None, stdin=subprocess.DEVNULL):
     streams = {"capture_output": True} if capture else {"stdout": sys.stdout, "stderr": sys.stderr}
     return subprocess.run([str(root / ".venv/Scripts/python.exe"), "-I", "-X", "utf8", "-B", *args],
-                          cwd=cwd if cwd is not None else root, env=environment, stdin=subprocess.DEVNULL, **streams, text=True,
+                          cwd=cwd if cwd is not None else root, env=environment, stdin=stdin, **streams, text=True,
                           encoding="utf-8", errors="strict", timeout=timeout,
                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def _serve(root, args, environment, cwd):
+    """Hand the host's protocol streams to `v2d mcp` unchanged: no capture, buffering or deadline here."""
+    return _run(root, [str(root / "scripts/v2d.py"), "mcp", *args], environment, cwd=cwd, stdin=sys.stdin).returncode
 
 
 def _venv_ready(root, manifest):
@@ -209,20 +237,26 @@ def main(argv=None):
     group.add_argument("--diagnostics", action="store_true")
     group.add_argument("--_probe", action="store_true", help=argparse.SUPPRESS)
     group.add_argument("--cli", nargs=argparse.REMAINDER)
+    group.add_argument("--mcp", nargs=argparse.REMAINDER, help="Serve `v2d mcp` over this process's stdin/stdout")
     options = parser.parse_args(argv)
+    # In MCP mode stdout belongs to the protocol; every bootstrap diagnostic goes to stderr.
+    report = sys.stderr if options.mcp is not None else sys.stdout
     try:
         root = options.root.resolve(strict=True)
         if root != ROOT:
             raise FrontendError("RELEASE_PATH", "The bootstrap must run from the selected release directory")
-        if options.cwd is not None and options.cli is None:
-            raise FrontendError("BOOTSTRAP_ARGUMENT", "--cwd is only accepted with --cli")
+        delegated = options.cli is not None or options.mcp is not None
+        if options.cwd is not None and not delegated:
+            raise FrontendError("BOOTSTRAP_ARGUMENT", "--cwd is only accepted with --cli or --mcp")
         caller = options.cwd if options.cwd is not None else Path.cwd()
-        if options.cli is not None and (not caller.is_absolute() or not caller.is_dir()):
+        if delegated and (not caller.is_absolute() or not caller.is_dir()):
             raise FrontendError("BOOTSTRAP_ARGUMENT", "CLI working directory must be an existing absolute directory")
         if options._probe:
             print(json.dumps(_probe(root), ensure_ascii=False, allow_nan=False))
             return 0
         details, environment = prepare(root)
+        if options.mcp is not None:
+            return _serve(root, options.mcp, environment, caller)
         if options.prepare:
             gui = relative_file(root, "gui/build/v2d-gui.exe")
             system = Path(os.environ.get("SystemRoot", "C:/Windows"))
@@ -247,7 +281,7 @@ def main(argv=None):
         return 0
     except (FrontendError, OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         diagnostic = error.as_dict() if isinstance(error, FrontendError) else {"code": "BOOTSTRAP_FAILED", "message": str(error)}
-        print(json.dumps({"schema_version": 1, "state": "failed", "diagnostic": diagnostic}, ensure_ascii=False))
+        print(json.dumps({"schema_version": 1, "state": "failed", "diagnostic": diagnostic}, ensure_ascii=False), file=report)
         return 1
 
 

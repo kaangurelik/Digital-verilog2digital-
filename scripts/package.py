@@ -8,15 +8,25 @@ import importlib.metadata
 import json
 import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
+import re
 import shutil
 import stat
 import sys
+import time
+import tomllib
 import uuid
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTATION = ("USER_GUIDE.md", "THIRD_PARTY_NOTICES.md")
-PRODUCTION_PACKAGES = ("attrs", "jsonschema", "jsonschema-specifications", "pyslang", "referencing", "rpds-py")
+# The installed runtime closure of agent/pyproject.toml; runtime_closure() rejects any drift.
+PRODUCTION_PACKAGES = ("annotated-types", "anyio", "attrs", "cffi", "click", "cryptography", "h11", "httpcore2", "httpx2",
+                       "idna", "jsonschema", "jsonschema-specifications", "mcp", "mcp-types", "opentelemetry-api",
+                       "pycparser", "pydantic", "pydantic-core", "pyjwt", "pyslang", "python-multipart", "pywin32",
+                       "referencing", "rpds-py", "sse-starlette", "starlette", "truststore", "typing-extensions",
+                       "typing-inspection", "uvicorn")
+# Code the private interpreter runs at every start: pywin32.pth adds its DLL directory.
+STARTUP_HOOKS = {"pywin32.pth"}
 PYTHON_ARCHIVE = "python.3.14.0.nupkg"
 PYTHON_SHA256 = "620fb3527428fb354f093b0b8b634dfb8e3023115df68608fba7e91db69b4f4d"
 GUI_DLLS = ("wxmsw32u_core_gcc_custom.dll", "wxbase32u_gcc_custom.dll", "zlib1.dll", "libstdc++-6.dll",
@@ -190,8 +200,54 @@ def hdl_runtime(contents, hdl):
         contents.add(hdl / name, expected=recorded.get(relative))
 
 
+def locked_versions():
+    pins = {}
+    for line in (ROOT / "agent/requirements-dev.lock").read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        name, separator, version = line.partition("==")
+        key = re.sub(r"[-_.]+", "-", name.strip()).lower()
+        if not separator or not version.strip() or key in pins or len(pins) >= 256:
+            raise ValueError(f"Dependency lock entries must be unique exact pins: {line[:200]}")
+        pins[key] = version.strip()
+    return pins
+
+
+def runtime_closure():
+    """Bind PRODUCTION_PACKAGES to the installed, lock-pinned closure of the declared runtime requirements."""
+    from packaging.markers import default_environment
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+    declared = tomllib.loads((ROOT / "agent/pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+    pins, environment = locked_versions(), default_environment()
+    pending, closure = [Requirement(text) for text in declared], {}
+    while pending:
+        requirement = pending.pop()
+        name = canonicalize_name(requirement.name)
+        if name in closure and set(requirement.extras) <= closure[name]:
+            continue
+        if len(closure) >= 256:
+            raise ValueError("Runtime dependency closure exceeds 256 distributions")
+        distribution = importlib.metadata.distribution(name)
+        if not requirement.specifier.contains(distribution.version, prereleases=True):
+            raise ValueError(f"Installed {name} {distribution.version} does not satisfy {requirement}")
+        if pins.get(name) != distribution.version:
+            raise ValueError(f"Installed {name} {distribution.version} differs from agent/requirements-dev.lock")
+        closure[name] = closure.get(name, set()) | set(requirement.extras)
+        for text in distribution.requires or ():
+            child = Requirement(text)
+            if child.marker is None or any(child.marker.evaluate({**environment, "extra": extra}) for extra in closure[name] | {""}):
+                pending.append(child)
+    production = {canonicalize_name(name) for name in PRODUCTION_PACKAGES}
+    if set(closure) != production:
+        raise ValueError("Production packages differ from the installed runtime closure; missing: "
+                         + ", ".join(sorted(set(closure) - production)) + "; unexpected: " + ", ".join(sorted(production - set(closure))))
+    return {name: importlib.metadata.version(name) for name in sorted(closure)}
+
+
 def dependencies(contents):
     site = (ROOT / ".venv/Lib/site-packages").resolve(strict=True)
+    hooks = set()
     for name in PRODUCTION_PACKAGES:
         distribution = importlib.metadata.distribution(name)
         if Path(distribution.locate_file("")).resolve(strict=True) != site:
@@ -202,7 +258,19 @@ def dependencies(contents):
             path = Path(distribution.locate_file(record)).resolve()
             if not path.is_relative_to(site) or path.suffix == ".pyc" or "__pycache__" in path.parts:
                 continue
+            if path.suffix.lower() == ".pth":
+                hooks.add(path.relative_to(site).as_posix())
             contents.add(path, ".venv/Lib/site-packages/" + path.relative_to(site).as_posix())
+    if hooks != STARTUP_HOOKS:
+        raise ValueError("Production .pth startup hooks differ from the reviewed set: " + ", ".join(sorted(hooks ^ STARTUP_HOOKS)))
+
+
+def missing_notices(inventory=None):
+    """Statically linked components whose license text no staged file supplies (OpenSSL in cryptography, for example)."""
+    inventory = document(ROOT / "scripts/release-licenses.json") if inventory is None else inventory
+    return [f"{package['name']} {package.get('version', '')}: {component['name']} {component.get('version', '')}".replace("  ", " ").strip()
+            for package in inventory.get("python_packages", []) for component in package.get("bundled_components", [])
+            if component.get("notice", {}).get("kind") == "not_in_distribution"]
 
 
 def notices(contents):
@@ -268,6 +336,24 @@ def write_archive(path, package, contents, prefix):
     return sha256(path)
 
 
+def publish(source, destination, *, seconds=60.0):
+    """Rename a finished private output into place.
+
+    Antivirus scans of thousands of new binaries can briefly hold one open without delete
+    sharing; only those Windows sharing errors are retried, within a bounded window.
+    """
+    deadline, delay = time.monotonic() + seconds, 0.05
+    while True:
+        try:
+            return source.rename(destination)
+        except OSError as error:
+            if (os.name != "nt" or getattr(error, "winerror", None) not in (5, 32, 33)
+                    or destination.exists() or time.monotonic() >= deadline):
+                raise
+        time.sleep(delay)
+        delay = min(delay * 2, 0.5)
+
+
 def model_contents(contents, model_ids, backends):
     if not model_ids:
         return []
@@ -300,6 +386,14 @@ def assemble(destination, *, model_ids=(), backends=("cpu", "cuda"), archive=Fal
     zip_path = destination.parent / (destination.name + ".zip")
     if archive and zip_path.exists():
         raise FileExistsError("Choose a new package archive; existing outputs are preserved")
+    missing = missing_notices()
+    if missing and archive:
+        # The archive is the distributable form; its notices must cover statically linked code.
+        raise RuntimeError("A distributable archive needs the license texts of statically linked components; stage them "
+                           "in scripts/release-licenses.json files first: " + "; ".join(missing))
+    if missing:
+        print("Warning: this package lacks license texts for statically linked components and must not be "
+              "distributed: " + "; ".join(missing), file=sys.stderr, flush=True)
     temporary = parent / (".v2d-package-" + uuid.uuid4().hex)
     temporary.mkdir(exist_ok=False)
     inputs = temporary / "inputs"; inputs.mkdir()
@@ -309,6 +403,7 @@ def assemble(destination, *, model_ids=(), backends=("cpu", "cuda"), archive=Fal
         contents = Contents()
         python = private_python(inputs)
         contents.tree(python, ".tools/python-runtime")
+        closure = runtime_closure()
         dependencies(contents)
         for directory in ("agent/src/verilog2digital", "schemas", "src/main/dig/lib"):
             contents.tree(ROOT / directory)
@@ -349,12 +444,13 @@ def assemble(destination, *, model_ids=(), backends=("cpu", "cuda"), archive=Fal
         archived = temporary / "release.zip"
         archive_sha256 = write_archive(archived, package, contents, destination.name) if archive else None
         contents.verify_inputs()
-        package.rename(destination)
+        publish(package, destination)
         result = {"schema_version": 1, "directory": str(destination), "files": len(contents.files),
                   "core_files": len(manifest["files"]), "bytes": sum(item.size for item in contents.files.values()),
-                  "manifest_sha256": sha256(destination / "release-manifest.json"), "optional_models": optional}
+                  "manifest_sha256": sha256(destination / "release-manifest.json"), "optional_models": optional,
+                  "python_dependencies": closure}
         if archive:
-            archived.rename(zip_path)
+            publish(archived, zip_path)
             result["archive"] = str(zip_path)
             result["archive_sha256"] = archive_sha256
         return result

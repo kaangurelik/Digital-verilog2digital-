@@ -12,8 +12,10 @@ import math
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import queue
 import shutil
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -22,7 +24,13 @@ ROOT = Path(__file__).resolve().parents[1]
 MAX_JSON = 16 * 1024**2
 MAX_LOG = 1024**2
 CORPUS = Path("examples/fixtures/release/index.json")
-PRODUCTION_PACKAGES = {"attrs", "jsonschema", "jsonschema-specifications", "pyslang", "referencing", "rpds-py"}
+PRODUCTION_PACKAGES = {"annotated-types", "anyio", "attrs", "cffi", "click", "cryptography", "h11", "httpcore2", "httpx2",
+                       "idna", "jsonschema", "jsonschema-specifications", "mcp", "mcp-types", "opentelemetry-api",
+                       "pycparser", "pydantic", "pydantic-core", "pyjwt", "pyslang", "python-multipart", "pywin32",
+                       "referencing", "rpds-py", "sse-starlette", "starlette", "truststore", "typing-extensions",
+                       "typing-inspection", "uvicorn"}
+MCP_LEGACY, MCP_MODERN = "2025-11-25", "2026-07-28"
+MCP_CLIENT = {"name": "v2d-release-check", "version": "0.1.0"}
 
 
 def require(condition, message):
@@ -140,6 +148,8 @@ def audit_isolation(doctor, package):
         require(inside(path, package), "External audited DLL loaded by packaged interpreter: " + name)
         private.append(name)
     require(any("python314" in name.lower() for name in private), "Probe did not bind the private Python DLL")
+    # The MCP stdio transport imports pywin32; its DLL must come from pywin32_system32 in the package.
+    require(any(name.lower() == "pywintypes314.dll" for name in private), "Probe did not bind pywin32's private DLL")
     native = Path(bootstrap["native_tools_root"]).resolve(strict=True)
     for name, tool in doctor.get("tools", {}).items():
         require(tool.get("available") is True, "Packaged tool unavailable: " + name)
@@ -508,16 +518,197 @@ def native_ui_acceptance(runner, root, output, report):
     report["native_ui"] = {"workflows": native, "digital": digital, "physical_input_simulated": False}
 
 
+class McpHost:
+    """A raw stdio JSON-RPC host: every stdout line must be one bounded JSON-RPC 2.0 message."""
+    def __init__(self, argv, stderr_path):
+        self.stderr_path = Path(stderr_path)
+        with self.stderr_path.open("xb") as log:
+            self.process = subprocess.Popen(list(map(str, argv)), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
+                                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.messages, self.received, self.errors, self.next_id = queue.Queue(), 0, [], 0
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader.start()
+
+    def _read(self):
+        total = 0
+        try:
+            while line := self.process.stdout.readline(MAX_JSON + 1):
+                total += len(line)
+                require(total <= MAX_JSON and line.endswith(b"\n"), "MCP stdout exceeded 16 MiB or ended inside a message")
+                message = strict_json(line)
+                require(isinstance(message, dict) and message.get("jsonrpc") == "2.0", "MCP stdout carried a non-JSON-RPC line")
+                self.received += 1
+                self.messages.put(message)
+        except BaseException as error:
+            self.errors.append(f"{type(error).__name__}: {error}"[:500])
+        finally:
+            self.messages.put(None)
+
+    def send(self, message):
+        self.process.stdin.write((json.dumps(message, ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8"))
+        self.process.stdin.flush()
+
+    def request(self, method, params, timeout):
+        self.next_id += 1
+        identifier, deadline = self.next_id, time.monotonic() + timeout
+        self.send({"jsonrpc": "2.0", "id": identifier, "method": method, "params": params})
+        while True:
+            require(self.stderr_path.stat().st_size <= MAX_LOG, "MCP server stderr exceeded 1 MiB")
+            try:
+                message = self.messages.get(timeout=max(0.01, min(1.0, deadline - time.monotonic())))
+            except queue.Empty:
+                require(time.monotonic() < deadline, f"MCP {method} exceeded its {timeout} s deadline")
+                continue
+            require(message is not None, "MCP stdout closed: " + "; ".join(self.errors or ["the launcher exited"]))
+            if "method" in message:
+                if "id" in message:  # Answer server requests without granting any client capability.
+                    self.send({"jsonrpc": "2.0", "id": message["id"], **({"result": {}} if message["method"] == "ping" else
+                               {"error": {"code": -32601, "message": "Not offered by the release check"}})})
+                continue
+            require(message.get("id") == identifier, "MCP response did not match its request id")
+            require("error" not in message, f"MCP {method} failed: {json.dumps(message.get('error'))[:500]}")
+            require(isinstance(message.get("result"), dict), f"MCP {method} returned no result object")
+            return message["result"]
+
+    def close(self, timeout):
+        """Close input as a host does at shutdown; the launcher must end its tree and stdout by itself."""
+        self.process.stdin.close()
+        try:
+            code = self.process.wait(timeout)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Launcher did not exit within {timeout} s after its host closed stdin") from None
+        self.reader.join(5)
+        require(not self.reader.is_alive(), "MCP stdout stayed open after the launcher exited")
+        require(not self.errors, "MCP stdout carried non-protocol bytes: " + "; ".join(self.errors))
+        return code
+
+    def stop(self):
+        if self.process.poll() is None:
+            self.process.kill()
+        self.process.wait(30)
+        if self.process.stdin and not self.process.stdin.closed:
+            try:
+                self.process.stdin.close()
+            except OSError:
+                pass
+
+
+def mcp_meta():
+    return {"io.modelcontextprotocol/protocolVersion": MCP_MODERN, "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": MCP_CLIENT}
+
+
+def mcp_tools(host, params, timeout, *, modern=False):
+    tools, cursor = [], None
+    for _ in range(16):
+        result = host.request("tools/list", {**params, **({"cursor": cursor} if cursor else {})}, timeout)
+        require(isinstance(result.get("tools"), list), "MCP tools/list returned no tools array")
+        require(not modern or result.get("resultType") == "complete", "A 2026-07-28 result omitted resultType complete")
+        tools.extend(result["tools"])
+        if not (cursor := result.get("nextCursor")):
+            names = [tool.get("name") if isinstance(tool, dict) else None for tool in tools]
+            require(names and all(isinstance(name, str) and name for name in names) and len(set(names)) == len(names),
+                    "MCP tools need unique non-empty names")
+            require(all(isinstance(tool.get("inputSchema"), dict) and tool["inputSchema"].get("type") == "object" for tool in tools),
+                    "Every MCP tool needs an object input schema")
+            return tools
+    raise RuntimeError("MCP tools/list exceeded 16 pages")
+
+
+def mcp_acceptance(command, evidence, *, startup=240, step=60, shutdown=30):
+    """Both protocol eras and both host shutdown paths through `VerilogToDigital.exe --mcp`.
+
+    Exercises the stdio contract only: stdout carries nothing but protocol, tools/list is
+    deterministic, closing stdin ends the launcher, and terminating it leaves no process.
+    Worst case, three startups, five steps and two shutdowns fit mcp_check's 1200 s deadline.
+    """
+    evidence = Path(evidence)
+    report = {"command": list(map(str, command)), "sessions": {}, "valid": False}
+    legacy = McpHost(command, evidence / "2025-11-25-stderr.log")
+    try:
+        started = time.monotonic()
+        result = legacy.request("initialize", {"protocolVersion": MCP_LEGACY, "capabilities": {}, "clientInfo": MCP_CLIENT}, startup)
+        require(result.get("protocolVersion") == MCP_LEGACY, "Server did not accept the 2025-11-25 handshake")
+        require(isinstance(result.get("capabilities"), dict) and isinstance(result["capabilities"].get("tools"), dict)
+                and isinstance(result.get("serverInfo"), dict) and isinstance(result["serverInfo"].get("name"), str),
+                "Handshake omitted serverInfo or the tools capability")
+        ready = time.monotonic() - started
+        legacy.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        first = mcp_tools(legacy, {}, step)
+        require(first == mcp_tools(legacy, {}, step), "MCP tools/list changed between identical calls")
+        names = [tool["name"] for tool in first]
+        code = legacy.close(shutdown)
+        require(code == 0, f"Launcher exited with {code} after its host closed stdin")
+        report["sessions"][MCP_LEGACY] = {"startup_seconds": round(ready, 3), "server": result["serverInfo"], "tools": names,
+                                          "messages": legacy.received, "exit_code": code}
+    finally:
+        legacy.stop()
+    modern = McpHost(command, evidence / "2026-07-28-stderr.log")
+    try:
+        result = modern.request("server/discover", {"_meta": mcp_meta()}, startup)
+        require(MCP_MODERN in result.get("supportedVersions", ()) and result.get("resultType") == "complete"
+                and isinstance(result.get("capabilities"), dict) and isinstance(result["capabilities"].get("tools"), dict),
+                "server/discover did not advertise 2026-07-28 tools")
+        modern_names = [tool["name"] for tool in mcp_tools(modern, {"_meta": mcp_meta()}, step, modern=True)]
+        require(modern_names == names, "The 2026-07-28 tool list differs from the handshake era")
+        code = modern.close(shutdown)
+        require(code == 0, f"Launcher exited with {code} after its host closed stdin")
+        report["sessions"][MCP_MODERN] = {"supported_versions": result["supportedVersions"], "tools": modern_names,
+                                          "messages": modern.received, "exit_code": code}
+    finally:
+        modern.stop()
+    # A host's last resort is terminating the launcher; the caller's job accounting proves the tree ended.
+    terminated = McpHost(command, evidence / "terminated-stderr.log")
+    try:
+        terminated.request("initialize", {"protocolVersion": MCP_LEGACY, "capabilities": {}, "clientInfo": MCP_CLIENT}, startup)
+        terminated.process.kill()
+        report["sessions"]["terminated"] = {"exit_code": terminated.process.wait(shutdown)}
+    finally:
+        terminated.stop()
+    report["valid"] = True
+    return report
+
+
+def mcp_host_main(argv):
+    parser = argparse.ArgumentParser(prog="check_release.py --_mcp-host")
+    parser.add_argument("--launcher", type=Path, required=True)
+    parser.add_argument("--allow-dir", type=Path, required=True)
+    parser.add_argument("--evidence", type=Path, required=True)
+    args = parser.parse_args(argv)
+    try:
+        report = mcp_acceptance([args.launcher, "--mcp", "--allow-dir", args.allow_dir], args.evidence)
+    except Exception as error:
+        report = {"valid": False, "error": {"type": type(error).__name__, "message": str(error)[:2000]}}
+    # The verdict travels in the JSON document; a nonzero exit means no verdict was produced.
+    print(json.dumps(report, ensure_ascii=False, allow_nan=False), flush=True)
+    return 0
+
+
+def mcp_check(runner, root, label, projects, output):
+    """Run the MCP host as an owned harness worker, so the launcher tree is inside its job accounting."""
+    evidence = output / (label + "-mcp"); evidence.mkdir()
+    result = runner.command(root, label + "-mcp", ["-I", "-X", "utf8", str(Path(__file__).resolve()), "--_mcp-host",
+        "--launcher", Path(root) / "VerilogToDigital.exe", "--allow-dir", projects, "--evidence", evidence],
+        executable=sys.executable, timeout=1200)
+    require(result.get("valid") is True, "Packaged MCP stdio acceptance failed: " + json.dumps(result.get("error"))[:2000])
+    return result
+
+
 def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="strict")
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["--_mcp-host"]:
+        return mcp_host_main(argv[1:])
     parser = argparse.ArgumentParser()
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--cases", help="Comma-separated bounded subset; default all ten")
     parser.add_argument("--relocate", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--negative", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--mcp", action=argparse.BooleanOptionalAction, default=True,
+                        help="Drive VerilogToDigital.exe --mcp over stdio in each installation")
     parser.add_argument("--model", action="store_true", help="Verify/use the separately supplied offline Q4 runtime bundle")
     parser.add_argument("--ui", action="store_true", help="Run packaged native GUI acceptance (requires --model and test binaries)")
     args = parser.parse_args(argv)
@@ -532,7 +723,8 @@ def main(argv=None):
     report = {"schema_version": 1, "valid": False, "scope": "sanitized environment on current Windows host; not a clean VM",
               "platform": platform.platform(), "network": {"offline_flags": True, "network_disabled_by_test": False,
               "claim": "local verified artifacts only; no installation/download command is used"},
-              "package": str(package), "installations": [], "model_requested": args.model, "ui_requested": args.ui}
+              "package": str(package), "installations": [], "model_requested": args.model, "ui_requested": args.ui,
+              "mcp_requested": args.mcp}
     runner = Runner(output)
     try:
         files = runtime_files(package, models=args.model)
@@ -559,6 +751,8 @@ def main(argv=None):
             fingerprints.append(isolation["runtime_fingerprint"])
             installation = {"label": label, "root": str(root), "diagnostics": isolation, "cases": {}}
             report["installations"].append(installation)
+            if args.mcp:
+                installation["mcp"] = mcp_check(runner, root, label, projects, output)
             for case in index["cases"]:
                 if case["id"] not in selected:
                     continue

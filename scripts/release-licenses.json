@@ -683,6 +683,20 @@
   ],
   "python_packages": [
     {
+      "name": "annotated-types",
+      "version": "0.8.0",
+      "notice_files": [
+        "licenses/python/annotated-types/annotated_types-0.8.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "anyio",
+      "version": "4.15.1",
+      "notice_files": [
+        "licenses/python/anyio/anyio-4.15.1.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
       "name": "attrs",
       "version": "26.1.0",
       "notice_files": [
@@ -690,10 +704,100 @@
       ]
     },
     {
+      "name": "cffi",
+      "version": "2.1.1",
+      "notice_files": [
+        "licenses/python/cffi/cffi-2.1.1.dist-info/licenses/LICENSE"
+      ],
+      "bundled_components": [
+        {
+          "name": "libffi",
+          "linkage": "static",
+          "observed": "_cffi_backend.cp314-win_amd64.pyd imports no libffi DLL, so its libffi code is linked into the extension.",
+          "notice": {
+            "kind": "not_in_distribution",
+            "note": "cffi's LICENSE defers to notices stated elsewhere; the wheel ships no libffi license file, SBOM or version identification."
+          }
+        }
+      ]
+    },
+    {
+      "name": "click",
+      "version": "8.5.0",
+      "notice_files": [
+        "licenses/python/click/click-8.5.0.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
       "name": "colorama",
       "version": "0.4.6",
       "notice_files": [
         "licenses/python/colorama/colorama-0.4.6.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "cryptography",
+      "version": "50.0.2",
+      "notice_files": [
+        "licenses/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE",
+        "licenses/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE",
+        "licenses/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE.BSD"
+      ],
+      "bundled_components": [
+        {
+          "name": "OpenSSL",
+          "version": "4.0.3",
+          "linkage": "static",
+          "evidence": [
+            "licenses/python/cryptography/cryptography-50.0.2.dist-info/sboms/sbom.json"
+          ],
+          "observed": "cryptography/hazmat/bindings/_rust.pyd embeds the version string 'OpenSSL 4.0.3 29 Sep 2026' and imports no OpenSSL DLL; the SBOM records build flags 'no-shared'.",
+          "notice": {
+            "kind": "not_in_distribution",
+            "note": "Neither the dist-info directory nor the package tree contains an OpenSSL license or copyright file. The SBOM names the upstream archive https://github.com/openssl/openssl/releases/download/openssl-4.0.3/openssl-4.0.3.tar.gz (SHA-256 325b5c806167c13b40b1ffeadfe0248197c00eccc4cf123ec1e28d2d2fd216d9); it was not retrieved offline, so no OpenSSL notice text is staged."
+          }
+        },
+        {
+          "name": "Rust crates",
+          "count": 39,
+          "linkage": "static",
+          "evidence": [
+            "licenses/python/cryptography/cryptography-50.0.2.dist-info/sboms/cryptography-rust.cyclonedx.json"
+          ],
+          "observed": "The CycloneDX SBOM lists 39 crate components (32 with scope required), including 7 first-party cryptography crates, with per-crate license expressions.",
+          "notice": {
+            "kind": "not_in_distribution",
+            "note": "Individual license texts for the third-party crates are not shipped in the wheel; only their SBOM license expressions are recorded."
+          }
+        }
+      ]
+    },
+    {
+      "name": "h11",
+      "version": "0.16.0",
+      "notice_files": [
+        "licenses/python/h11/h11-0.16.0.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "httpcore2",
+      "version": "2.16.0",
+      "notice_files": [
+        "licenses/python/httpcore2/httpcore2-2.16.0.dist-info/licenses/LICENSE.md"
+      ]
+    },
+    {
+      "name": "httpx2",
+      "version": "2.16.0",
+      "notice_files": [
+        "licenses/python/httpx2/httpx2-2.16.0.dist-info/licenses/LICENSE.md"
+      ]
+    },
+    {
+      "name": "idna",
+      "version": "3.20",
+      "notice_files": [
+        "licenses/python/idna/idna-3.20.dist-info/licenses/LICENSE.md"
       ]
     },
     {
@@ -718,6 +822,27 @@
       ]
     },
     {
+      "name": "mcp",
+      "version": "2.3.0",
+      "notice_files": [
+        "licenses/python/mcp/mcp-2.3.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "mcp-types",
+      "version": "2.3.0",
+      "notice_files": [
+        "licenses/python/mcp-types/mcp_types-2.3.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "opentelemetry-api",
+      "version": "1.45.2",
+      "notice_files": [
+        "licenses/python/opentelemetry-api/opentelemetry_api-1.45.2.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
       "name": "packaging",
       "version": "26.3",
       "notice_files": [
@@ -734,11 +859,55 @@
       ]
     },
     {
+      "name": "pycparser",
+      "version": "3.12",
+      "notice_files": [
+        "licenses/python/pycparser/pycparser-3.12.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pydantic",
+      "version": "2.14.2",
+      "notice_files": [
+        "licenses/python/pydantic/pydantic-2.14.2.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pydantic_core",
+      "version": "2.50.2",
+      "notice_files": [
+        "licenses/python/pydantic_core/pydantic_core-2.50.2.dist-info/licenses/LICENSE"
+      ],
+      "bundled_components": [
+        {
+          "name": "Rust crates",
+          "count": 101,
+          "linkage": "static",
+          "evidence": [
+            "licenses/python/pydantic_core/pydantic_core-2.50.2.dist-info/sboms/pydantic-core.cyclonedx.json"
+          ],
+          "observed": "The CycloneDX SBOM lists 101 crate components (97 with scope required) with per-crate license expressions.",
+          "notice": {
+            "kind": "not_in_distribution",
+            "note": "Individual license texts for the statically linked crates are not shipped in the wheel; only their SBOM license expressions are recorded."
+          }
+        }
+      ]
+    },
+    {
       "name": "Pygments",
       "version": "2.21.0",
       "notice_files": [
         "licenses/python/Pygments/pygments-2.21.0.dist-info/licenses/AUTHORS",
         "licenses/python/Pygments/pygments-2.21.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "PyJWT",
+      "version": "2.15.1",
+      "notice_files": [
+        "licenses/python/PyJWT/pyjwt-2.15.1.dist-info/licenses/AUTHORS.rst",
+        "licenses/python/PyJWT/pyjwt-2.15.1.dist-info/licenses/LICENSE"
       ]
     },
     {
@@ -756,6 +925,27 @@
       ]
     },
     {
+      "name": "python-multipart",
+      "version": "0.0.32",
+      "notice_files": [
+        "licenses/python/python-multipart/python_multipart-0.0.32.dist-info/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "pywin32",
+      "version": "312",
+      "notice_files": [
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/adodbapi/license.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/com/License.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/com/win32comext/mapi/src/MAPIStubLibrary/LICENSE",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/isapi/README.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/License.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/Scintilla/License.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/pywin/idle/LICENSE.txt",
+        "licenses/python/pywin32/pywin32-312.dist-info/licenses/win32/License.txt"
+      ]
+    },
+    {
       "name": "referencing",
       "version": "0.37.0",
       "notice_files": [
@@ -767,6 +957,64 @@
       "version": "2026.6.3",
       "notice_files": [
         "licenses/python/rpds-py/rpds_py-2026.6.3.dist-info/licenses/LICENSE"
+      ],
+      "bundled_components": [
+        {
+          "name": "Rust crates",
+          "count": 17,
+          "linkage": "static",
+          "evidence": [
+            "licenses/python/rpds-py/rpds_py-2026.6.3.dist-info/sboms/rpds-py.cyclonedx.json"
+          ],
+          "observed": "The CycloneDX SBOM lists 17 crate components (15 with scope required) with per-crate license expressions.",
+          "notice": {
+            "kind": "not_in_distribution",
+            "note": "Individual license texts for the statically linked crates are not shipped in the wheel; only their SBOM license expressions are recorded."
+          }
+        }
+      ]
+    },
+    {
+      "name": "sse-starlette",
+      "version": "3.6.0",
+      "notice_files": [
+        "licenses/python/sse-starlette/sse_starlette-3.6.0.dist-info/licenses/AUTHORS",
+        "licenses/python/sse-starlette/sse_starlette-3.6.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "starlette",
+      "version": "1.10.0",
+      "notice_files": [
+        "licenses/python/starlette/starlette-1.10.0.dist-info/licenses/LICENSE.md"
+      ]
+    },
+    {
+      "name": "truststore",
+      "version": "0.10.5",
+      "notice_files": [
+        "licenses/python/truststore/truststore-0.10.5.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "typing-inspection",
+      "version": "0.4.4",
+      "notice_files": [
+        "licenses/python/typing-inspection/typing_inspection-0.4.4.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "typing_extensions",
+      "version": "4.16.0",
+      "notice_files": [
+        "licenses/python/typing_extensions/typing_extensions-4.16.0.dist-info/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "uvicorn",
+      "version": "0.54.0",
+      "notice_files": [
+        "licenses/python/uvicorn/uvicorn-0.54.0.dist-info/licenses/LICENSE.md"
       ]
     }
   ],
@@ -3103,6 +3351,26 @@
       "kind": "notice"
     },
     {
+      "target": "licenses/python/annotated-types/annotated_types-0.8.0.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/annotated-types/annotated_types-0.8.0.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/annotated_types-0.8.0.dist-info/licenses/LICENSE"
+      },
+      "sha256": "fe1049884b1a0d9342901e88e07f32925d24b3121d9972b6a6805fb9824b095d",
+      "bytes": 1083,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/anyio/anyio-4.15.1.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/anyio/anyio-4.15.1.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/anyio-4.15.1.dist-info/licenses/LICENSE"
+      },
+      "sha256": "5361ac9dc58f2ef5fd2e9b09c68297c17f04950909bbc8023bdb82eacf22c2b0",
+      "bytes": 1081,
+      "kind": "notice"
+    },
+    {
       "target": "licenses/python/attrs/attrs-26.1.0.dist-info/licenses/LICENSE",
       "staged_path": ".runs/phase11-license-inputs/collected/python/attrs/attrs-26.1.0.dist-info/licenses/LICENSE",
       "source": {
@@ -3113,6 +3381,26 @@
       "kind": "notice"
     },
     {
+      "target": "licenses/python/cffi/cffi-2.1.1.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/cffi/cffi-2.1.1.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/cffi-2.1.1.dist-info/licenses/LICENSE"
+      },
+      "sha256": "5ba24ddc57067f9249add644c3afc41a5d6dc37e23433ef759d95df370b0af63",
+      "bytes": 1123,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/click/click-8.5.0.dist-info/licenses/LICENSE.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/click/click-8.5.0.dist-info/licenses/LICENSE.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/click-8.5.0.dist-info/licenses/LICENSE.txt"
+      },
+      "sha256": "9a8ad106a394e853bfe21f42f4e72d592819a22805d991b5f3275029292b658d",
+      "bytes": 1475,
+      "kind": "notice"
+    },
+    {
       "target": "licenses/python/colorama/colorama-0.4.6.dist-info/licenses/LICENSE.txt",
       "staged_path": ".runs/phase11-license-inputs/collected/python/colorama/colorama-0.4.6.dist-info/licenses/LICENSE.txt",
       "source": {
@@ -3120,6 +3408,96 @@
       },
       "sha256": "cac35c02686e5d04a5a7140bfb3b36e73aed496656e891102e428886d7930318",
       "bytes": 1491,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/cryptography-50.0.2.dist-info/licenses/LICENSE"
+      },
+      "sha256": "3e0c7c091a948b82533ba98fd7cbb40432d6f1a9acbf85f5922d2f99a93ae6bb",
+      "bytes": 197,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE",
+      "source": {
+        "path": ".venv/Lib/site-packages/cryptography-50.0.2.dist-info/licenses/LICENSE.APACHE"
+      },
+      "sha256": "aac73b3148f6d1d7111dbca32099f68d26c644c6813ae1e4f05f6579aa2663fe",
+      "bytes": 11360,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE.BSD",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/cryptography/cryptography-50.0.2.dist-info/licenses/LICENSE.BSD",
+      "source": {
+        "path": ".venv/Lib/site-packages/cryptography-50.0.2.dist-info/licenses/LICENSE.BSD"
+      },
+      "sha256": "602c4c7482de6479dd2e9793cda275e5e63d773dacd1eca689232ab7008fb4fb",
+      "bytes": 1532,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/cryptography/cryptography-50.0.2.dist-info/sboms/cryptography-rust.cyclonedx.json",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/cryptography/cryptography-50.0.2.dist-info/sboms/cryptography-rust.cyclonedx.json",
+      "source": {
+        "path": ".venv/Lib/site-packages/cryptography-50.0.2.dist-info/sboms/cryptography-rust.cyclonedx.json"
+      },
+      "sha256": "246af194b4c524807c5aaffd2b7ff86c2c9bee3eb3fceeac987709ad76e4e7ef",
+      "bytes": 45629,
+      "kind": "provenance"
+    },
+    {
+      "target": "licenses/python/cryptography/cryptography-50.0.2.dist-info/sboms/sbom.json",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/cryptography/cryptography-50.0.2.dist-info/sboms/sbom.json",
+      "source": {
+        "path": ".venv/Lib/site-packages/cryptography-50.0.2.dist-info/sboms/sbom.json"
+      },
+      "sha256": "5b5eea08dd952a16eef188f7a85ad439a4409efa0e2bce9ca339a4de9c8db3f0",
+      "bytes": 1223,
+      "kind": "provenance"
+    },
+    {
+      "target": "licenses/python/h11/h11-0.16.0.dist-info/licenses/LICENSE.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/h11/h11-0.16.0.dist-info/licenses/LICENSE.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/h11-0.16.0.dist-info/licenses/LICENSE.txt"
+      },
+      "sha256": "37db5bb85926db28a427a25867f10b1232003aea1be69ccb851138adb8e6f361",
+      "bytes": 1124,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/httpcore2/httpcore2-2.16.0.dist-info/licenses/LICENSE.md",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/httpcore2/httpcore2-2.16.0.dist-info/licenses/LICENSE.md",
+      "source": {
+        "path": ".venv/Lib/site-packages/httpcore2-2.16.0.dist-info/licenses/LICENSE.md"
+      },
+      "sha256": "c4df125c807b0613501e943a5c92496dd11d2c16604ce396097a8dde396304d9",
+      "bytes": 1599,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/httpx2/httpx2-2.16.0.dist-info/licenses/LICENSE.md",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/httpx2/httpx2-2.16.0.dist-info/licenses/LICENSE.md",
+      "source": {
+        "path": ".venv/Lib/site-packages/httpx2-2.16.0.dist-info/licenses/LICENSE.md"
+      },
+      "sha256": "7e7d6dbaf7fe160d39fd6e84fd02c33cab96bcbea34d36998d545bceb4a19c30",
+      "bytes": 1589,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/idna/idna-3.20.dist-info/licenses/LICENSE.md",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/idna/idna-3.20.dist-info/licenses/LICENSE.md",
+      "source": {
+        "path": ".venv/Lib/site-packages/idna-3.20.dist-info/licenses/LICENSE.md"
+      },
+      "sha256": "1a9a4f0e3d479a27240ddd59a9137a66ab4a0f9dfdc8ca6188cc0bfd85187f04",
+      "bytes": 1541,
       "kind": "notice"
     },
     {
@@ -3150,6 +3528,36 @@
       },
       "sha256": "42dcd63495f87b4eb7c7757afa379bb55a53f94afd7a5f657d9adf57236e515c",
       "bytes": 1057,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/mcp/mcp-2.3.0.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/mcp/mcp-2.3.0.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/mcp-2.3.0.dist-info/licenses/LICENSE"
+      },
+      "sha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
+      "bytes": 1071,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/mcp-types/mcp_types-2.3.0.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/mcp-types/mcp_types-2.3.0.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/mcp_types-2.3.0.dist-info/licenses/LICENSE"
+      },
+      "sha256": "5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d",
+      "bytes": 1071,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/opentelemetry-api/opentelemetry_api-1.45.2.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/opentelemetry-api/opentelemetry_api-1.45.2.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/opentelemetry_api-1.45.2.dist-info/licenses/LICENSE"
+      },
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357,
       "kind": "notice"
     },
     {
@@ -3193,6 +3601,46 @@
       "kind": "notice"
     },
     {
+      "target": "licenses/python/pycparser/pycparser-3.12.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pycparser/pycparser-3.12.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/pycparser-3.12.dist-info/licenses/LICENSE"
+      },
+      "sha256": "0a9e78156ae8b96caf1b4f11ac2df424b83de29736f9e757630548a6272fdf90",
+      "bytes": 1543,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pydantic/pydantic-2.14.2.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pydantic/pydantic-2.14.2.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/pydantic-2.14.2.dist-info/licenses/LICENSE"
+      },
+      "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
+      "bytes": 1129,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pydantic_core/pydantic_core-2.50.2.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pydantic_core/pydantic_core-2.50.2.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/pydantic_core-2.50.2.dist-info/licenses/LICENSE"
+      },
+      "sha256": "fbe7f615f18d135c07000e5a86325db27f42c7729699ef166ac1f7a3f4586bf4",
+      "bytes": 1101,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pydantic_core/pydantic_core-2.50.2.dist-info/sboms/pydantic-core.cyclonedx.json",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pydantic_core/pydantic_core-2.50.2.dist-info/sboms/pydantic-core.cyclonedx.json",
+      "source": {
+        "path": ".venv/Lib/site-packages/pydantic_core-2.50.2.dist-info/sboms/pydantic-core.cyclonedx.json"
+      },
+      "sha256": "740610491a6b0fc45f1533639f3c8d4540e33cd3a83b568157f1ca397870cae0",
+      "bytes": 122742,
+      "kind": "provenance"
+    },
+    {
       "target": "licenses/python/Pygments/pygments-2.21.0.dist-info/licenses/AUTHORS",
       "staged_path": ".runs/phase11-license-inputs/collected/python/Pygments/pygments-2.21.0.dist-info/licenses/AUTHORS",
       "source": {
@@ -3210,6 +3658,26 @@
       },
       "sha256": "a9d66f1d526df02e29dce73436d34e56e8632f46c275bbdffc70569e882f9f17",
       "bytes": 1331,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/PyJWT/pyjwt-2.15.1.dist-info/licenses/AUTHORS.rst",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/PyJWT/pyjwt-2.15.1.dist-info/licenses/AUTHORS.rst",
+      "source": {
+        "path": ".venv/Lib/site-packages/pyjwt-2.15.1.dist-info/licenses/AUTHORS.rst"
+      },
+      "sha256": "925ce43461029eedbf558ec0b7cf7fc4b045def5120ebb97937c70814071cf07",
+      "bytes": 322,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/PyJWT/pyjwt-2.15.1.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/PyJWT/pyjwt-2.15.1.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/pyjwt-2.15.1.dist-info/licenses/LICENSE"
+      },
+      "sha256": "797a7a20231d4c433e9f1911db1731d06b5828b98f499819a034f7c0f56f5ce5",
+      "bytes": 1085,
       "kind": "notice"
     },
     {
@@ -3233,6 +3701,96 @@
       "kind": "notice"
     },
     {
+      "target": "licenses/python/python-multipart/python_multipart-0.0.32.dist-info/licenses/LICENSE.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/python-multipart/python_multipart-0.0.32.dist-info/licenses/LICENSE.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/python_multipart-0.0.32.dist-info/licenses/LICENSE.txt"
+      },
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/adodbapi/license.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/adodbapi/license.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/adodbapi/license.txt"
+      },
+      "sha256": "5ea2f23c7f00c3006bacf267183e816d8d4b6dc95ea57a4ddb0ff81de6d8719e",
+      "bytes": 26925,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/com/License.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/com/License.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/com/License.txt"
+      },
+      "sha256": "fad39c18fc3825fa278db1c86fd52cf88d7c525b3c2fbf7817fa383cbae4d423",
+      "bytes": 1570,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/com/win32comext/mapi/src/MAPIStubLibrary/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/com/win32comext/mapi/src/MAPIStubLibrary/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/com/win32comext/mapi/src/MAPIStubLibrary/LICENSE"
+      },
+      "sha256": "1c4cf44d2fb8bf2d10214d6da80cc9e05502824cc4460f35be4c7bcb4cde53da",
+      "bytes": 1087,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/isapi/README.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/isapi/README.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/isapi/README.txt"
+      },
+      "sha256": "41383bcc95edb8138d37077ae54bfdcbd2a3b77bf745a8529a9c161146e22303",
+      "bytes": 330,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/License.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/License.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/pythonwin/License.txt"
+      },
+      "sha256": "a74d826efb242db087b850348e20abbfd591b51e2081f2048735290913872924",
+      "bytes": 1541,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/Scintilla/License.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/Scintilla/License.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/pythonwin/Scintilla/License.txt"
+      },
+      "sha256": "57ec79bbeab4fd1cf7460a7ad450d2ab01471810459aeae9e75e4c66b472095f",
+      "bytes": 873,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/pywin/idle/LICENSE.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/pythonwin/pywin/idle/LICENSE.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/pythonwin/pywin/idle/LICENSE.txt"
+      },
+      "sha256": "a0fa1e7b8a4230055685e796548ac084a6c0eea395294574093bba72efd9191b",
+      "bytes": 12540,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/pywin32/pywin32-312.dist-info/licenses/win32/License.txt",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/pywin32/pywin32-312.dist-info/licenses/win32/License.txt",
+      "source": {
+        "path": ".venv/Lib/site-packages/pywin32-312.dist-info/licenses/win32/License.txt"
+      },
+      "sha256": "a74d826efb242db087b850348e20abbfd591b51e2081f2048735290913872924",
+      "bytes": 1541,
+      "kind": "notice"
+    },
+    {
       "target": "licenses/python/referencing/referencing-0.37.0.dist-info/licenses/COPYING",
       "staged_path": ".runs/phase11-license-inputs/collected/python/referencing/referencing-0.37.0.dist-info/licenses/COPYING",
       "source": {
@@ -3250,6 +3808,86 @@
       },
       "sha256": "8bcb72c82ea8ae74802293c41d93ad7d51434001b0ae45a603a5af0f507aee0a",
       "bytes": 1076,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/rpds-py/rpds_py-2026.6.3.dist-info/sboms/rpds-py.cyclonedx.json",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/rpds-py/rpds_py-2026.6.3.dist-info/sboms/rpds-py.cyclonedx.json",
+      "source": {
+        "path": ".venv/Lib/site-packages/rpds_py-2026.6.3.dist-info/sboms/rpds-py.cyclonedx.json"
+      },
+      "sha256": "5fa8e62b8f860c23a9da6ddb19c215184397d1a7f2cd3d93055898d119ba0e40",
+      "bytes": 20558,
+      "kind": "provenance"
+    },
+    {
+      "target": "licenses/python/sse-starlette/sse_starlette-3.6.0.dist-info/licenses/AUTHORS",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/sse-starlette/sse_starlette-3.6.0.dist-info/licenses/AUTHORS",
+      "source": {
+        "path": ".venv/Lib/site-packages/sse_starlette-3.6.0.dist-info/licenses/AUTHORS"
+      },
+      "sha256": "c2ff63d2ecf128bbda8ab1b2016830a5da124202fbb97168685bb9946aed3f1a",
+      "bytes": 395,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/sse-starlette/sse_starlette-3.6.0.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/sse-starlette/sse_starlette-3.6.0.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/sse_starlette-3.6.0.dist-info/licenses/LICENSE"
+      },
+      "sha256": "80af6bfccbebd2c14d4aab96695cab9950e177190cc80f5ef819e99996883e8e",
+      "bytes": 1511,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/starlette/starlette-1.10.0.dist-info/licenses/LICENSE.md",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/starlette/starlette-1.10.0.dist-info/licenses/LICENSE.md",
+      "source": {
+        "path": ".venv/Lib/site-packages/starlette-1.10.0.dist-info/licenses/LICENSE.md"
+      },
+      "sha256": "dcb95677a02240243187e964f941847d19b17821cf99e5afae684fab328c19bf",
+      "bytes": 1518,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/truststore/truststore-0.10.5.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/truststore/truststore-0.10.5.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/truststore-0.10.5.dist-info/licenses/LICENSE"
+      },
+      "sha256": "33be7b7e8fa4fd19b1760e1a8ed8a668bdab852c91b692dd41424bcb725a9fca",
+      "bytes": 1086,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/typing-inspection/typing_inspection-0.4.4.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/typing-inspection/typing_inspection-0.4.4.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/typing_inspection-0.4.4.dist-info/licenses/LICENSE"
+      },
+      "sha256": "804b59b25f2c31bd278f9202a19ae49a3945aa2664387e2d0a128c7cacc61ec3",
+      "bytes": 1090,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/typing_extensions/typing_extensions-4.16.0.dist-info/licenses/LICENSE",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/typing_extensions/typing_extensions-4.16.0.dist-info/licenses/LICENSE",
+      "source": {
+        "path": ".venv/Lib/site-packages/typing_extensions-4.16.0.dist-info/licenses/LICENSE"
+      },
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+      "bytes": 13936,
+      "kind": "notice"
+    },
+    {
+      "target": "licenses/python/uvicorn/uvicorn-0.54.0.dist-info/licenses/LICENSE.md",
+      "staged_path": ".runs/phase11-license-inputs/collected/python/uvicorn/uvicorn-0.54.0.dist-info/licenses/LICENSE.md",
+      "source": {
+        "path": ".venv/Lib/site-packages/uvicorn-0.54.0.dist-info/licenses/LICENSE.md"
+      },
+      "sha256": "efe1acf3e62fb99c288b0ec73e5a773b7268ef4320fe757ea994214e4b63c371",
+      "bytes": 1526,
       "kind": "notice"
     },
     {
@@ -7932,7 +8570,11 @@
     "CUDA 12.4.1 archived EULA and the hash-verified official cudart 12.4.127 archive/license are collected; cudart DLL equals the pinned llama member. cuBLAS 12.4.5.8 is identified by the official 12.4.1 redistribution index; full original cuBLAS archive equality was not downloaded/rechecked.",
     "Rolling NVIDIA component-license URLs are supplemental current evidence, not substitutes for version-pinned archived terms.",
     "Visual Studio local Redist inventory and Microsoft list are collected; publisher applicability of edition-specific terms is not decided here.",
-    "Standalone compiled library and source copyright notices must retain component-specific paths; the shaded jar single META-INF/LICENSE is insufficient."
+    "Standalone compiled library and source copyright notices must retain component-specific paths; the shaded jar single META-INF/LICENSE is insufficient.",
+    "cryptography 50.0.2 statically links OpenSSL 4.0.3 (wheel SBOM and embedded version string); the wheel ships no OpenSSL license or copyright file, and the upstream archive named by the SBOM was not retrieved, so no OpenSSL notice text is staged.",
+    "cryptography 50.0.2, pydantic_core 2.50.2 and rpds-py 2026.6.3 statically link Rust crates listed with license expressions in their shipped CycloneDX SBOMs (staged as provenance); individual crate license texts are not shipped in those wheels.",
+    "cffi 2.1.1's _cffi_backend imports no libffi DLL; the wheel ships no libffi license file or version identification.",
+    "pywin32 312 declares License: PSF while its license files are BSD-style (win32, com, pythonwin), LGPL-2.1 (adodbapi), Scintilla/SciTE, PSF (Pythonwin IDLE) and MIT (MAPIStubLibrary); the complete distribution is packaged and all eight files are preserved without a combined-license conclusion."
   ],
   "oss_cad_runtime_dependencies": [
     {

@@ -1,4 +1,5 @@
 // Own the bootstrap process tree until exit, then launch the GUI independently.
+// --mcp keeps owning the tree while the host's protocol pipes pass straight through.
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -6,10 +7,12 @@
 #include <shellapi.h>
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cwctype>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -162,17 +165,17 @@ std::vector<wchar_t> EnvironmentBlock(const Variables& values) {
 }
 
 struct Options {
-    enum class Mode { Gui, Smoke, Doctor, Diagnostics, Cli } mode = Mode::Gui;
+    enum class Mode { Gui, Smoke, Doctor, Diagnostics, Cli, Mcp } mode = Mode::Gui;
     std::optional<Path> project;
-    std::vector<std::wstring> cli;
+    std::vector<std::wstring> cli;  // The v2d command for --cli, or the `v2d mcp` arguments for --mcp.
 };
 
 Options ParseOptions(const std::vector<std::wstring>& args) {
     Options options;
     for (std::size_t i = 0; i < args.size(); ++i) {
         Valid(args[i]);
-        if (args[i] == L"--cli" && i == 0 && args.size() > 1) {
-            options.mode = Options::Mode::Cli;
+        if (i == 0 && ((args[i] == L"--cli" && args.size() > 1) || args[i] == L"--mcp")) {
+            options.mode = args[i] == L"--cli" ? Options::Mode::Cli : Options::Mode::Mcp;
             options.cli.assign(args.begin() + 1, args.end());
             for (const auto& arg : options.cli) Valid(arg);
             return options;
@@ -181,7 +184,7 @@ Options ParseOptions(const std::vector<std::wstring>& args) {
             options.project = Absolute(args[++i]);
         } else if ((args[i] == L"--smoke-test" || args[i] == L"--doctor" || args[i] == L"--diagnostics") && options.mode == Options::Mode::Gui) {
             options.mode = args[i] == L"--smoke-test" ? Options::Mode::Smoke : args[i] == L"--doctor" ? Options::Mode::Doctor : Options::Mode::Diagnostics;
-        } else throw std::runtime_error("Use --project <file>, --smoke-test, --doctor, --diagnostics, or --cli <arguments>");
+        } else throw std::runtime_error("Use --project <file>, --smoke-test, --doctor, --diagnostics, --cli <arguments>, or --mcp [arguments]");
     }
     if (options.project && options.mode != Options::Mode::Gui && options.mode != Options::Mode::Smoke)
         throw std::runtime_error("--project is only valid when opening the desktop");
@@ -249,6 +252,46 @@ DWORD Active(HANDLE job) {
     return value.ActiveProcesses;
 }
 
+Handle Ownership(ULONGLONG memory = 0) {
+    Handle job(CreateJobObjectW(nullptr, nullptr));
+    Check(static_cast<bool>(job), "Create bootstrap ownership");
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+    limits.BasicLimitInformation.ActiveProcessLimit = 128;
+    if (memory) { limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_MEMORY; limits.JobMemoryLimit = memory; }
+    Check(SetInformationJobObject(job.Get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)), "Set bootstrap ownership limits");
+    return job;
+}
+
+void Stop(HANDLE job) {
+    TerminateJobObject(job, ERROR_CANCELLED);
+    const auto deadline = Clock::now() + std::chrono::seconds(5);
+    while (Active(job) && Clock::now() < deadline) Sleep(10);
+}
+
+// The job owns the child from its first instruction; it inherits only the three standard handles.
+PROCESS_INFORMATION StartOwned(const std::vector<std::wstring>& args, const Path& root, const Variables& env,
+                               HANDLE job, HANDLE input, HANDLE output, HANDLE error) {
+    SIZE_T size = 0; InitializeProcThreadAttributeList(nullptr, 2, 0, &size);
+    std::vector<unsigned char> storage(size);
+    auto attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+    Check(InitializeProcThreadAttributeList(attributes, 2, 0, &size), "Initialize bootstrap attributes");
+    struct Attributes { LPPROC_THREAD_ATTRIBUTE_LIST value; ~Attributes() { DeleteProcThreadAttributeList(value); } } cleanup{attributes};
+    HANDLE jobs[]{job}, handles[]{input, output, error};
+    Check(UpdateProcThreadAttribute(attributes, 0, 0x2000D, jobs, sizeof(jobs), nullptr, nullptr), "Own bootstrap before execution");
+    Check(UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles, sizeof(handles), nullptr, nullptr), "Restrict bootstrap handles");
+    STARTUPINFOEXW startup{}; startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+    startup.StartupInfo.wShowWindow = SW_HIDE;
+    startup.StartupInfo.hStdInput = input; startup.StartupInfo.hStdOutput = output; startup.StartupInfo.hStdError = error;
+    startup.lpAttributeList = attributes;
+    PROCESS_INFORMATION info{}; auto command = CommandLine(args); auto block = EnvironmentBlock(env);
+    Check(CreateProcessW(args.front().c_str(), command.data(), nullptr, nullptr, TRUE,
+                         CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+                         block.data(), root.c_str(), &startup.StartupInfo, &info), "Start private Python bootstrap");
+    return info;
+}
+
 struct Capture { std::string output, error; DWORD exit_code = 0; DWORD remaining_processes = 0; };
 
 void ReadAvailable(HANDLE pipe, std::string& data, std::size_t maximum, bool& ended) {
@@ -272,34 +315,12 @@ void ReadAvailable(HANDLE pipe, std::string& data, std::size_t maximum, bool& en
 
 Capture RunOwned(const std::vector<std::wstring>& args, const Path& root, Variables env,
                  std::chrono::milliseconds timeout, bool prepare) {
-    Handle job(CreateJobObjectW(nullptr, nullptr));
-    Check(static_cast<bool>(job), "Create bootstrap ownership");
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
-    limits.BasicLimitInformation.ActiveProcessLimit = 128;
-    if (prepare) { limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_JOB_MEMORY; limits.JobMemoryLimit = 512ull * 1024 * 1024; }
-    Check(SetInformationJobObject(job.Get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)), "Set bootstrap ownership limits");
+    auto job = Ownership(prepare ? 512ull * 1024 * 1024 : 0);
     Pipe out, err; out.Open(); err.Open();
     SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
     Handle input(CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, &security, OPEN_EXISTING, 0, nullptr));
     Check(static_cast<bool>(input), "Open bootstrap input");
-    SIZE_T size = 0; InitializeProcThreadAttributeList(nullptr, 2, 0, &size);
-    std::vector<unsigned char> storage(size);
-    auto attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
-    Check(InitializeProcThreadAttributeList(attributes, 2, 0, &size), "Initialize bootstrap attributes");
-    struct Attributes { LPPROC_THREAD_ATTRIBUTE_LIST value; ~Attributes() { DeleteProcThreadAttributeList(value); } } cleanup{attributes};
-    HANDLE jobs[]{job.Get()}, handles[]{input.Get(), out.write.Get(), err.write.Get()};
-    Check(UpdateProcThreadAttribute(attributes, 0, 0x2000D, jobs, sizeof(jobs), nullptr, nullptr), "Own bootstrap before execution");
-    Check(UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles, sizeof(handles), nullptr, nullptr), "Restrict bootstrap handles");
-    STARTUPINFOEXW startup{}; startup.StartupInfo.cb = sizeof(startup);
-    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-    startup.StartupInfo.wShowWindow = SW_HIDE;
-    startup.StartupInfo.hStdInput = input.Get(); startup.StartupInfo.hStdOutput = out.write.Get(); startup.StartupInfo.hStdError = err.write.Get();
-    startup.lpAttributeList = attributes;
-    PROCESS_INFORMATION info{}; auto command = CommandLine(args); auto block = EnvironmentBlock(env);
-    Check(CreateProcessW(args.front().c_str(), command.data(), nullptr, nullptr, TRUE,
-                         CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
-                         block.data(), root.c_str(), &startup.StartupInfo, &info), "Start private Python bootstrap");
+    auto info = StartOwned(args, root, env, job.Get(), input.Get(), out.write.Get(), err.write.Get());
     Handle process(info.hProcess), thread(info.hThread);
     out.write.Reset(); err.write.Reset();
     Capture result; bool outEnded = false, errEnded = false;
@@ -321,12 +342,101 @@ Capture RunOwned(const std::vector<std::wstring>& args, const Path& root, Variab
             Sleep(10);
         }
     } catch (...) {
-        TerminateJobObject(job.Get(), ERROR_CANCELLED);
-        const auto cleanupDeadline = Clock::now() + std::chrono::seconds(5);
-        while (Active(job.Get()) && Clock::now() < cleanupDeadline) Sleep(10);
+        Stop(job.Get());
         throw;
     }
     return result;
+}
+
+// MCP hosts own the protocol pipes. The server tree receives them unchanged, so no
+// launcher buffer, text conversion or deadline sits between the host and the server.
+struct Streams {
+    HANDLE input, output, error;
+    static Streams Current() { return {GetStdHandle(STD_INPUT_HANDLE), GetStdHandle(STD_OUTPUT_HANDLE), GetStdHandle(STD_ERROR_HANDLE)}; }
+};
+
+bool Connected(HANDLE handle) {
+    if (!handle || handle == INVALID_HANDLE_VALUE) return false;
+    SetLastError(NO_ERROR);
+    return GetFileType(handle) != FILE_TYPE_UNKNOWN || GetLastError() == NO_ERROR;
+}
+
+Handle Duplicate(HANDLE source, bool inheritable, const char* operation) {
+    HANDLE copy = nullptr;
+    Check(DuplicateHandle(GetCurrentProcess(), source, GetCurrentProcess(), &copy, 0, inheritable, DUPLICATE_SAME_ACCESS), operation);
+    return Handle(copy);
+}
+
+// Peeking never consumes protocol bytes: a pipe the host closed reports ERROR_BROKEN_PIPE
+// once the server has read everything sent before the close. A peek can wait behind the
+// server's own pending read of the same pipe, so it runs on a thread that owns its state.
+class InputWatch {
+public:
+    explicit InputWatch(HANDLE input) : state_(std::make_shared<State>()) {
+        state_->closed.Reset(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+        Check(static_cast<bool>(state_->closed), "Create MCP input watch");
+        if (GetFileType(input) != FILE_TYPE_PIPE) return;  // A file or device ends when the server reads it.
+        state_->input = Duplicate(input, false, "Watch MCP input");
+        auto owner = std::make_unique<std::shared_ptr<State>>(state_);
+        Handle thread(CreateThread(nullptr, 0, Watch, owner.get(), 0, nullptr));
+        Check(static_cast<bool>(thread), "Start MCP input watch");
+        owner.release();
+    }
+    ~InputWatch() { state_->stopped = true; }
+    InputWatch(const InputWatch&) = delete;
+    InputWatch& operator=(const InputWatch&) = delete;
+    HANDLE Closed() const { return state_->closed.Get(); }
+private:
+    struct State { Handle input, closed; std::atomic<bool> stopped{false}; };
+    static DWORD WINAPI Watch(void* value) {
+        std::unique_ptr<std::shared_ptr<State>> owner(static_cast<std::shared_ptr<State>*>(value));
+        auto& state = **owner;
+        for (DWORD available = 0; !state.stopped; Sleep(50)) {
+            if (PeekNamedPipe(state.input.Get(), nullptr, 0, nullptr, &available, nullptr)) continue;
+            const auto error = GetLastError();
+            if (error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED) SetEvent(state.closed.Get());
+            break;
+        }
+        return 0;
+    }
+    std::shared_ptr<State> state_;
+};
+
+// Runs `v2d mcp` through the bootstrap for as long as the host keeps it: no runtime cap.
+// The job ends the whole tree when the launcher is terminated, when the server outlives
+// its closed input by `grace`, or when the server exits and leaves a descendant behind.
+int Serve(const std::vector<std::wstring>& args, const Path& root, const Variables& env, const Streams& host,
+          std::chrono::milliseconds grace = std::chrono::seconds(10)) {
+    if (!Connected(host.input) || !Connected(host.output))
+        throw std::runtime_error("--mcp needs standard input and output connected to an MCP host");
+    auto job = Ownership();
+    InputWatch watch(host.input);
+    Handle input = Duplicate(host.input, true, "Share MCP input"), output = Duplicate(host.output, true, "Share MCP output"), error;
+    if (Connected(host.error)) error = Duplicate(host.error, true, "Share MCP log stream");
+    else {
+        SECURITY_ATTRIBUTES security{sizeof(security), nullptr, TRUE};
+        error.Reset(CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &security, OPEN_EXISTING, 0, nullptr));
+        Check(static_cast<bool>(error), "Open MCP log sink");
+    }
+    auto info = StartOwned(args, root, env, job.Get(), input.Get(), output.Get(), error.Get());
+    Handle process(info.hProcess), thread(info.hThread);
+    input.Reset(); output.Reset(); error.Reset();
+    try {
+        HANDLE events[]{process.Get(), watch.Closed()};
+        const auto signaled = WaitForMultipleObjects(2, events, FALSE, INFINITE);
+        if (signaled != WAIT_OBJECT_0 && signaled != WAIT_OBJECT_0 + 1) Check(FALSE, "Wait for MCP server");
+        if (signaled == WAIT_OBJECT_0 + 1 && WaitForSingleObject(process.Get(), static_cast<DWORD>(grace.count())) != WAIT_OBJECT_0)
+            throw std::runtime_error("MCP server did not exit within " + std::to_string(grace.count()) + " ms after its input closed; its process tree was stopped");
+        DWORD code = 0;
+        Check(GetExitCodeProcess(process.Get(), &code), "Read MCP server exit code");
+        const auto deadline = Clock::now() + std::chrono::seconds(2);
+        while (Active(job.Get()) && Clock::now() < deadline) Sleep(10);
+        if (Active(job.Get())) throw std::runtime_error("MCP server exited with a live descendant; its process tree was stopped");
+        return static_cast<int>(code);
+    } catch (...) {
+        Stop(job.Get());
+        throw;
+    }
 }
 
 Handle StartGui(const Plan& plan, const Path& root, const Options& options) {
@@ -372,6 +482,12 @@ int Run(const Path& root, const Options& options) {
     if (!std::filesystem::is_regular_file(python) || !std::filesystem::is_regular_file(script))
         throw std::runtime_error("Portable runtime is incomplete; extract the full package before starting it");
     std::vector<std::wstring> args{python.native(), L"-I", L"-X", L"utf8", script.native(), L"--root", root.native()};
+    if (options.mode == Options::Mode::Mcp) {
+        // The host's working directory resolves relative --allow-dir paths.
+        args.push_back(L"--cwd"); args.push_back(Absolute(std::filesystem::current_path()).native());
+        args.push_back(L"--mcp"); args.insert(args.end(), options.cli.begin(), options.cli.end());
+        return Serve(args, root, Environment(root), Streams::Current());
+    }
     const bool prepare = options.mode == Options::Mode::Gui || options.mode == Options::Mode::Smoke;
     if (prepare) args.push_back(L"--prepare");
     else if (options.mode == Options::Mode::Doctor) args.push_back(L"--doctor");
@@ -418,15 +534,17 @@ int Run(const Path& root, const Options& options) {
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     using namespace v2d::portable;
     SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    bool headless = false;  // An MCP host cannot dismiss a message box; stderr and the exit code must suffice.
     try {
         int argc = 0; auto** raw = CommandLineToArgvW(GetCommandLineW(), &argc);
         if (!raw) throw std::runtime_error("Cannot read launcher arguments");
         std::vector<std::wstring> args(raw + 1, raw + argc); LocalFree(raw);
+        headless = !args.empty() && args.front() == L"--mcp";
         return Run(Executable().parent_path(), ParseOptions(args));
     } catch (const std::exception& error) {
         std::string message = error.what();
         auto json = Json{{"schema_version",1},{"state","failed"},{"error",message}}.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n";
-        if (!Output(GetStdHandle(STD_ERROR_HANDLE), json)) {
+        if (!Output(GetStdHandle(STD_ERROR_HANDLE), json) && !headless) {
             std::wstring text;
             try { text = Wide(message); } catch (...) { text = L"Portable startup failed. Check that the package is complete."; }
             if (text.size() > 3500) text.resize(3500);
