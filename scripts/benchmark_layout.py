@@ -199,16 +199,16 @@ def fresh_destination() -> Path:
     return result
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, help="New directory for native artifacts and benchmark JSON")
     parser.add_argument("--cases", nargs="+", choices=CASES, default=list(CASES))
     parser.add_argument("--spacing", type=int, default=40)
-    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--seed", type=int, choices=[1], default=1, help="Native ELK planner seed; only 1 is supported")
     parser.add_argument("--timeout", type=float, default=20)
     parser.add_argument("--stress-timeout", type=float, default=2, help="General search budget for the 248-component case")
     parser.add_argument("--no-render", action="store_true", help="Skip compact ALU comparison previews")
-    arguments = parser.parse_args()
+    arguments = parser.parse_args(argv)
     require_venv(ROOT)
     destination = (arguments.output or fresh_destination()).resolve()
     destination.mkdir(parents=True, exist_ok=False)

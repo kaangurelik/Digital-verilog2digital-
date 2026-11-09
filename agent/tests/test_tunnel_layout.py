@@ -1,5 +1,6 @@
 """Optional tunnels preserve native connectivity and leave source mapping intact."""
 from copy import deepcopy
+import time
 
 import pytest
 
@@ -74,4 +75,51 @@ def test_zero_tunnel_budget_keeps_the_valid_visible_layout(tmp_path, adapter):
     mapped, layout = candidate(tmp_path, adapter)
     result = add_long_tunnels(layout, mapped, None, minimum_length=100, timeout=0)
     assert result["circuit"] == layout["circuit"]
+    assert result["tunnels"]["budget_exhausted"]
+
+
+def test_recorded_tunnel_plan_reproduces_names_ids_and_wires(tmp_path, adapter):
+    mapped, layout = candidate(tmp_path, adapter, 8)
+    tunneled = add_long_tunnels(layout, mapped, adapter, minimum_length=100, maximum_nets=2, timeout=20)
+    assert tunneled["tunnels"]["nets"]
+    replayed = add_long_tunnels(layout, mapped, adapter, timeout=20, nets=tunneled["tunnels"]["nets"])
+    assert replayed["circuit"] == tunneled["circuit"] and replayed["descriptors"] == tunneled["descriptors"]
+    assert replayed["validation_mapping"] == tunneled["validation_mapping"]
+    assert replayed["tunnels"]["nets"] == tunneled["tunnels"]["nets"]
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda plan: plan[0].update(net_id="unknown"),
+    lambda plan: plan[0].update(name="T" + "".join("1" if char == "0" else "0" for char in plan[0]["name"][1:5]) + plan[0]["name"][5:]),
+    lambda plan: plan[0].update(name=plan[0]["name"] + "0"),
+    lambda plan: plan[0].update(name="X" + plan[0]["name"][1:]),
+    lambda plan: plan[0]["instances"].pop(),
+    lambda plan: plan[0]["instances"].reverse(),
+    lambda plan: plan.append(dict(plan[0])),
+    lambda plan: plan.append({**plan[0], "name": plan[0]["name"][:-1] + "9",
+                              "instances": [item[:10] + "9" + item[11:] for item in plan[0]["instances"]]}),
+    lambda plan: plan.__setitem__(0, "net"),
+])
+def test_invalid_recorded_tunnel_plans_fail_before_native_work(tmp_path, adapter, mutation):
+    mapped, layout = candidate(tmp_path, adapter)
+    plan = deepcopy(add_long_tunnels(layout, mapped, adapter, minimum_length=100, maximum_nets=1, timeout=20)["tunnels"]["nets"])
+    mutation(plan)
+    with pytest.raises(LayoutError) as error:
+        add_long_tunnels(layout, mapped, None, nets=plan)
+    assert error.value.code == "INVALID_TUNNEL_PLAN"
+
+
+def test_tunnel_interrupted_by_its_budget_is_reported_as_budget_skip(tmp_path, adapter):
+    mapped, layout = candidate(tmp_path, adapter)
+
+    class Slow:
+        def call(self, method, params, **options):
+            result = adapter.call(method, params)
+            time.sleep(0.3)
+            return result
+
+    result = add_long_tunnels(layout, mapped, Slow(), minimum_length=100, timeout=0.2)
+    assert result["circuit"] == layout["circuit"] and not result["tunnels"]["nets"]
+    connected = next(net["id"] for net in mapped["nets"] if len(net["endpoints"]) > 1)
+    assert result["tunnels"]["skipped"] == [{"net_id": connected, "reason": "budget_exhausted"}]
     assert result["tunnels"]["budget_exhausted"]

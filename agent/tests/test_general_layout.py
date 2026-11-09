@@ -134,3 +134,10 @@ def test_zero_budget_stress_fallback_is_bounded_and_preserves_intent(corpus, lay
     assert elapsed <= 3 * report["results"]["reserved"]["runtime_seconds"] + 10
     verified = benchmark.verify_layout(mapped, fallback, layout_adapter, tmp_path)
     assert verified["valid"], verified["checks"]
+
+
+@pytest.mark.parametrize("seed", ["0", "2"])
+def test_layout_benchmark_rejects_seeds_the_native_planner_cannot_use(tmp_path, seed):
+    with pytest.raises(SystemExit) as error:
+        benchmark.main(["--output", str(tmp_path / "unused"), "--seed", seed])
+    assert error.value.code == 2 and not (tmp_path / "unused").exists()
