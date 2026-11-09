@@ -231,7 +231,16 @@ def main(argv=None):
     job.add_argument("action", choices=("status", "cancel", "recover"))
     job.add_argument("path", type=Path, nargs="?")
     _output_flags(job)
+    mcp = commands.add_parser("mcp", help="Serve the converter to MCP hosts over stdio until stdin closes")
+    # Kept as text: Path("") would silently become the working directory.
+    mcp.add_argument("--allow-dir", action="append", default=[],
+                     help="Folder whose contents tools may read and write (repeatable); without it every path is refused")
+    _limits_flags(mcp)
     options = parser.parse_args(argv)
+    if options.command == "mcp":
+        # stdout carries only MCP protocol messages from here on.
+        from .mcp_server import serve
+        return serve(options)
     output_lock = threading.Lock()
     output_finished = False
     try:
