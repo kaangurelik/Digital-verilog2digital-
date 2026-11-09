@@ -1,0 +1,1 @@
+{"schema_version":1,"sources":["../../verilog/sequential/counter.v"],"top":"counter","trace":"trace.json","conversion":{"seed":0,"random_count":256,"refinement":{"mode":"off"}}}

@@ -60,9 +60,19 @@ public class ElementLibrary implements Iterable<ElementLibrary.ElementContainer>
     private static final long MIN_RESCAN_INTERVAL = 5000;
 
     /**
+     * The system property digital.library.path can override automatic discovery.
+     *
      * @return the additional library path
      */
     public static File getLibPath() {
+        String configured = System.getProperty("digital.library.path");
+        if (configured != null && !configured.isEmpty()) {
+            File library = toCanonical(new File(configured));
+            if (!library.isDirectory())
+                throw new IllegalArgumentException("digital.library.path is not a directory: " + library);
+            return library;
+        }
+
         String path;
         try {
             path = ElementLibrary.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath().replace('\\', '/');

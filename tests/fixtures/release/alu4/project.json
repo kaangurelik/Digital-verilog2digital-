@@ -1,0 +1,1 @@
+{"schema_version":1,"sources":["../../verilog/datapath/alu4.v"],"top":"alu4","conversion":{"seed":0,"random_count":256,"refinement":{"mode":"off"}}}

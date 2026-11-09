@@ -1,0 +1,1 @@
+{"schema_version":1,"sources":["../../verilog/datapath/shifts64.v"],"top":"shifts64","conversion":{"seed":0,"random_count":256,"refinement":{"mode":"off"}}}

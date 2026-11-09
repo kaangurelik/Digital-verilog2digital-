@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "clock": {"port": "clk", "edge": "rising"},
+  "initialization": {"kind": "input_sequence", "cycles": [
+    {"values": {"rst": 1, "en_a": 0, "en_b": 0, "d_a": 0, "d_b": 255}}
+  ]},
+  "cycles": [
+    {"values": {"rst": 0, "en_a": 1, "en_b": 0, "d_a": 165, "d_b": 90}},
+    {"values": {"rst": 0, "en_a": 0, "en_b": 1, "d_a": 0, "d_b": 90}},
+    {"values": {"rst": 0, "en_a": 1, "en_b": 1, "d_a": 255, "d_b": 0}},
+    {"values": {"rst": 0, "en_a": 0, "en_b": 0, "d_a": 18, "d_b": 52}},
+    {"values": {"rst": 1, "en_a": 1, "en_b": 1, "d_a": 1, "d_b": 2}},
+    {"values": {"rst": 0, "en_a": 1, "en_b": 0, "d_a": 128, "d_b": 127}}
+  ]
+}

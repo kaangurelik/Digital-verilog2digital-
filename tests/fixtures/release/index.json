@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {"id": "full_adder", "project": "full_adder/project.json", "kind": "combinational", "vectors": 8},
+    {"id": "bus_permutations", "project": "bus_permutations/project.json", "kind": "combinational", "vectors": 256},
+    {"id": "alu4", "project": "alu4/project.json", "kind": "combinational", "vectors": 1024},
+    {"id": "mixed_symbols", "project": "mixed_symbols/project.json", "kind": "combinational", "vectors": 512},
+    {"id": "shifts64", "project": "shifts64/project.json", "kind": "combinational", "minimum_vectors": 256},
+    {"id": "counter", "project": "counter/project.json", "kind": "sequential", "cycles": 20, "registers": 1},
+    {"id": "parameter_specializations", "project": "parameter_specializations/project.json", "kind": "hierarchy", "minimum_vectors": 256, "minimum_modules": 3},
+    {"id": "port_aliases", "project": "port_aliases/project.json", "kind": "hierarchy", "vectors": 16, "minimum_modules": 2},
+    {"id": "stateful_children", "project": "stateful_children/project.json", "kind": "sequential_hierarchy", "cycles": 6, "registers": 2, "minimum_modules": 2},
+    {"id": "unicode_include", "project": "unicode_include/project.json", "kind": "combinational", "vectors": 4}
+  ]
+}

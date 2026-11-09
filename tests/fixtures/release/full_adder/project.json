@@ -1,0 +1,1 @@
+{"schema_version":1,"sources":["../../verilog/scalar/full_adder.v"],"top":"full_adder","conversion":{"seed":0,"random_count":256,"refinement":{"mode":"off"}}}

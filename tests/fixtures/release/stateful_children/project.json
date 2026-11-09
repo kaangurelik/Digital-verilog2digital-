@@ -1,0 +1,1 @@
+{"schema_version":1,"sources":["../../verilog/hierarchy/stateful_children.v"],"top":"stateful_children","trace":"trace.json","conversion":{"seed":0,"random_count":256,"flatten":false,"refinement":{"mode":"off"}}}

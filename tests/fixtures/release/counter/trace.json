@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "clock": {"port": "clk", "edge": "rising"},
+  "initialization": {"kind": "input_sequence", "cycles": [{"values": {"rst": 1, "en": 0}}]},
+  "cycles": [
+    {"values": {"rst": 0, "en": 0}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}, {"values": {"rst": 0, "en": 1}},
+    {"values": {"rst": 0, "en": 0}}, {"values": {"rst": 1, "en": 1}},
+    {"values": {"rst": 0, "en": 1}}
+  ]
+}

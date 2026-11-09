@@ -1,0 +1,2 @@
+`define RELEASE_WIDTH 2
+`define RELEASE_MASK 2'b01

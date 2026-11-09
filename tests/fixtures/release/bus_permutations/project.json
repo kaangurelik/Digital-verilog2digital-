@@ -1,0 +1,1 @@
+{"schema_version":1,"sources":["../../verilog/datapath/bus_permutations.v"],"top":"bus_permutations","conversion":{"seed":0,"random_count":256,"refinement":{"mode":"off"}}}
