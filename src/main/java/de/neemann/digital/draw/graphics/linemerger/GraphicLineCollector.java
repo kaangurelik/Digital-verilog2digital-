@@ -8,8 +8,8 @@ package de.neemann.digital.draw.graphics.linemerger;
 import de.neemann.digital.draw.graphics.*;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 
 /**
  * Merges all single lines which are drawn to polygons.
@@ -17,13 +17,14 @@ import java.util.Iterator;
  * instead of single lines.
  */
 public class GraphicLineCollector extends Graphic {
-    private final HashMap<Style, PolygonSet> polys;
+    // Keep paint order stable across JVMs: Style keys use identity equality.
+    private final LinkedHashMap<Style, PolygonSet> polys;
 
     /**
      * Creates a new instance
      */
     public GraphicLineCollector() {
-        this.polys = new HashMap<>();
+        this.polys = new LinkedHashMap<>();
     }
 
     @Override
