@@ -92,20 +92,30 @@ final class PackageContext {
         return real;
     }
 
-    void validatePreviewOutput(Path path) throws Exception {
-        Path normalized = path.getParent().toRealPath().resolve(path.getFileName());
+    /** Path equality follows the platform, so Windows also matches case variants of registered names. */
+    private boolean registered(Path normalized) {
         for (Module module : modules.values()) {
-            if (normalized.equals(module.path) || normalized.equals(module.path.resolveSibling(module.type + ".ids.json"))) {
-                throw invalid("PACKAGE_IMMUTABLE", "Preview must not replace a registered circuit or sidecar");
-            }
+            if (normalized.equals(module.path) || normalized.equals(module.path.resolveSibling(module.type + ".ids.json"))) return true;
+        }
+        return false;
+    }
+
+    void validatePreviewOutput(Path path) throws Exception {
+        if (path.getParent() == null || path.getFileName() == null || !Files.isDirectory(path.getParent())) {
+            throw invalid("OUTPUT_DIRECTORY_MISSING", "Output parent directory must already exist");
+        }
+        if (registered(path.getParent().toRealPath().resolve(path.getFileName().toString()))) {
+            throw invalid("PACKAGE_IMMUTABLE", "Preview must not replace a registered circuit or sidecar");
         }
     }
 
     void validateOutput(Path path) throws Exception {
-        if (!root.equals(path.getParent().toRealPath()) || !path.getFileName().toString().matches("[A-Za-z_][A-Za-z0-9_-]*\\.dig")) {
+        String name = path.getFileName() == null ? "" : path.getFileName().toString();
+        if (!name.matches("[A-Za-z_][A-Za-z0-9_-]*\\.dig") || path.getParent() == null || !Files.isDirectory(path.getParent())
+                || !root.equals(path.getParent().toRealPath())) {
             throw invalid("PACKAGE_PATH", "Circuit output must be a local ASCII .dig basename in the package root");
         }
-        if (modules.containsKey(path.getFileName().toString())) {
+        if (registered(root.resolve(name))) {
             throw invalid("PACKAGE_IMMUTABLE", "Do not overwrite an already registered child module");
         }
     }

@@ -1,5 +1,12 @@
 package digitalagent;
 
+import de.neemann.digital.core.element.Keys;
+import de.neemann.digital.draw.elements.Circuit;
+import de.neemann.digital.draw.elements.VisualElement;
+import de.neemann.digital.draw.graphics.Vector;
+import de.neemann.digital.draw.library.ElementLibrary;
+import de.neemann.digital.draw.model.InverterConfig;
+import de.neemann.digital.draw.shapes.ShapeFactory;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.junit.Rule;
@@ -8,7 +15,10 @@ import org.junit.rules.TemporaryFolder;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -66,6 +76,64 @@ public class DigitalAdapterTest {
         reject("RESOURCE_LIMIT", "And", new JSONObject().put("Inputs", Integer.MAX_VALUE));
         reject("RESOURCE_LIMIT", "Splitter", new JSONObject().put("Output Splitting", "1*2147483647"));
         reject("DUPLICATE_PIN", "Splitter", new JSONObject().put("Output Splitting", "1,0-0"));
+    }
+
+    @Test(timeout = 10000)
+    public void hugeExponentsAreRangeCheckedWithoutExpandingTheirDigits() throws Exception {
+        reject("INTEGER_RANGE", "And", new JSONObject().put("Bits", new BigDecimal("1e99999999")));
+        reject("INTEGER_RANGE", "And", new JSONObject().put("Bits", new BigDecimal("-1e99999999")));
+        reject("INVALID_INTEGER", "And", new JSONObject().put("Bits", new BigDecimal("1e-99999999")));
+        reject("INVALID_INTEGER", "And", new JSONObject().put("Bits", new BigDecimal("65.5")));
+        reject("INTEGER_RANGE", "And", new JSONObject().put("Bits", new BigDecimal("65.000")));
+        assertEquals(8, describe("And", new JSONObject().put("Bits", new BigDecimal("8.000")))
+                .getJSONObject("attributes").getInt("Bits"));
+        assertEquals(100, JsonSupport.integer(new BigDecimal("1e2"), "value", 0, 100));
+        assertEquals(0, JsonSupport.integer(-0.0, "value", 0, 0));
+        assertEquals(Long.MIN_VALUE, JsonSupport.integer(new BigDecimal("-9223372036854775808"), "value", Long.MIN_VALUE, Long.MAX_VALUE));
+    }
+
+    @Test
+    public void reloadedInputInversionOutsideTheNativeTypeIsRejected() throws Exception {
+        // Digital applies inverterConfig to every element, although Add does not list the key.
+        ShapeFactory shapes = new ShapeFactory(new ElementLibrary(), true);
+        Circuit circuit = new Circuit();
+        circuit.add(new VisualElement("Add").setShapeFactory(shapes).setPos(new Vector(0, 0)).setAttribute(Keys.BITS, 8)
+                .setAttribute(Keys.INVERTER_CONFIG, new InverterConfig.Builder().add("a").build()));
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        circuit.save(output);
+        byte[] bytes = output.toByteArray();
+        Circuit reloaded = Circuit.loadCircuit(new ByteArrayInputStream(bytes), shapes);
+        JSONObject sidecar = new JSONObject().put("schema_version", 1).put("sha256", JsonSupport.sha256(bytes))
+                .put("instances", new JSONArray().put(new JSONObject().put("id", "sum").put("index", 0)
+                        .put("signature", SerializedIdentity.signature(reloaded.getElements().get(0)))));
+        Path path = temporary.getRoot().toPath().resolve("inverted.dig");
+        Path sidecarPath = path.resolveSibling("inverted.dig.ids.json");
+        Files.write(path, bytes);
+        Files.writeString(sidecarPath, JsonSupport.canonical(sidecar));
+        try {
+            adapter.dispatch("circuit.inspect", new JSONObject().put("path", path.toString()).put("sidecar_path", sidecarPath.toString()));
+            fail("A native input inversion hidden from the component description was accepted");
+        } catch (RpcException error) {
+            assertEquals("UNSUPPORTED_ATTRIBUTE", error.code);
+        }
+    }
+
+    @Test
+    public void previewCannotReplaceTheImplicitAdjacentSidecar() throws Exception {
+        JSONObject emitted = emit();
+        Path sidecar = Path.of(emitted.getString("sidecar_path"));
+        byte[] before = Files.readAllBytes(sidecar);
+        for (String format : new String[]{"svg", "png"}) {
+            try {
+                adapter.dispatch("circuit.render", new JSONObject().put("path", emitted.getString("path"))
+                        .put("format", format).put("output_path", sidecar.toString()));
+                fail("Preview replaced the adjacent sidecar");
+            } catch (RpcException error) {
+                assertEquals("OUTPUT_COLLISION", error.code);
+            }
+        }
+        assertArrayEquals(before, Files.readAllBytes(sidecar));
+        inspect(emitted);
     }
 
     @Test

@@ -18,7 +18,7 @@ public class Pin extends PinInfo {
     private final Vector pos;
     private ObservableValue value;
     private ObservableValue readerValue;  // reader for bidirectional pins
-    private VisualElement visualElement;  // only used to create better error messages!
+    private VisualElement visualElement;  // used for error messages and to identify the pin's element
 
 
     /**
@@ -84,6 +84,13 @@ public class Pin extends PinInfo {
     public Pin setVisualElement(VisualElement visualElement) {
         this.visualElement = visualElement;
         return this;
+    }
+
+    /**
+     * @return the visual element this pin belongs to, or null if unknown
+     */
+    public VisualElement getVisualElement() {
+        return visualElement;
     }
 
     @Override

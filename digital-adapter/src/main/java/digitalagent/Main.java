@@ -19,6 +19,7 @@ import java.util.Set;
 public final class Main {
     static final int MAX_LINE_BYTES = 8 * 1024 * 1024;
     static final int MAX_JSON_DEPTH = 128;
+    static final int MAX_NUMBER_CHARS = 128;
     private static final Set<String> REQUEST_FIELDS = Set.of("jsonrpc", "id", "method", "params");
 
     private Main() { }
@@ -122,7 +123,14 @@ public final class Main {
             response = error(id, -32603, "internal_error", "Adapter operation failed; see stderr for details");
         }
         if (!notification) {
-            respond(output, response);
+            String text = response.toString();
+            // Clients frame responses with the same limit, newline included; never emit a line they must reject.
+            if (text.length() >= MAX_LINE_BYTES / 3 && text.getBytes(StandardCharsets.UTF_8).length >= MAX_LINE_BYTES) {
+                text = error(id, -32603, "response_too_large",
+                        "Response exceeds the 8 MiB line limit; reduce the request size").toString();
+            }
+            output.println(text);
+            output.flush();
         }
     }
 
@@ -233,6 +241,7 @@ public final class Main {
         }
 
         private void number() throws RpcException {
+            int start = offset;
             consume('-');
             if (!consume('0')) {
                 if (offset == text.length() || text.charAt(offset) < '1' || text.charAt(offset) > '9') {
@@ -248,6 +257,10 @@ public final class Main {
                     consume('-');
                 }
                 requireDigits();
+            }
+            // org.json converts digits with quadratic cost; 1e99999999 stays short and is range-checked later.
+            if (offset - start > MAX_NUMBER_CHARS) {
+                throw new RpcException(-32700, "json_number_too_long", "JSON numbers are limited to " + MAX_NUMBER_CHARS + " characters");
             }
         }
 

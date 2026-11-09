@@ -4,7 +4,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -60,15 +59,19 @@ final class JsonSupport {
 
     static long integer(Object value, String name, long min, long max) throws RpcException {
         if (!(value instanceof Number)) throw invalid("INVALID_INTEGER", name + " must be an integer");
+        BigDecimal number;
         try {
-            BigInteger number = new BigDecimal(value.toString()).toBigIntegerExact();
-            if (number.compareTo(BigInteger.valueOf(min)) < 0 || number.compareTo(BigInteger.valueOf(max)) > 0) {
-                throw invalid("INTEGER_RANGE", name + " must be between " + min + " and " + max);
-            }
-            return number.longValueExact();
-        } catch (NumberFormatException | ArithmeticException error) {
+            number = new BigDecimal(value.toString());
+            if (number.scale() > 0) number = number.stripTrailingZeros();
+        } catch (NumberFormatException error) {
             throw invalid("INVALID_INTEGER", name + " must be an exact integer");
         }
+        if (number.scale() > 0) throw invalid("INVALID_INTEGER", name + " must be an exact integer");
+        // Compare before expansion: an exponent such as 1e99999999 must not materialize its digits.
+        if (number.compareTo(BigDecimal.valueOf(min)) < 0 || number.compareTo(BigDecimal.valueOf(max)) > 0) {
+            throw invalid("INTEGER_RANGE", name + " must be between " + min + " and " + max);
+        }
+        return number.longValueExact();
     }
 
     static Path absolutePath(JSONObject params, String key) throws RpcException {

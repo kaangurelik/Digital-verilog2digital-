@@ -264,6 +264,36 @@ public class HierarchyTest {
         assertEquals(16, after.getJSONArray("pins").getJSONObject(0).getInt("width"));
     }
 
+    @Test public void emitCannotReplaceARegisteredModuleThroughANameCaseVariant() throws Exception {
+        String type = alias(1).register("Registered");
+        Path registered = temporary.getRoot().toPath().resolve(type), sidecar = registered.resolveSibling(type + ".ids.json");
+        byte[] circuit = Files.readAllBytes(registered), identities = Files.readAllBytes(sidecar);
+        String variant = "M" + type.substring(1);
+        boolean caseInsensitive = Files.exists(registered.resolveSibling(variant));
+        try {
+            alias(8).emit(variant, "Replacement");
+            assertFalse("A case-insensitive file system must protect the registered module", caseInsensitive);
+        } catch (RpcException error) {
+            assertTrue(error.code, caseInsensitive);
+            assertEquals("PACKAGE_IMMUTABLE", error.code);
+        }
+        assertArrayEquals(circuit, Files.readAllBytes(registered));
+        assertArrayEquals(identities, Files.readAllBytes(sidecar));
+    }
+
+    @Test public void packagedPreviewIntoAMissingDirectoryHasTheOrdinaryDiagnostic() throws Exception {
+        String type = alias(1).register("Registered");
+        Path root = temporary.getRoot().toPath();
+        RpcException missing = assertThrows(RpcException.class, () -> call("circuit.render", new JSONObject()
+                .put("path", root.resolve(type).toString()).put("format", "svg")
+                .put("output_path", root.resolve("missing").resolve("preview.svg").toString())));
+        assertEquals("OUTPUT_DIRECTORY_MISSING", missing.code);
+        RpcException outside = assertThrows(RpcException.class, () -> call("circuit.emit", new JSONObject()
+                .put("path", root.resolve("missing").resolve("circuit.dig").toString())
+                .put("circuit", new JSONObject().put("schema_version", 1).put("instances", new JSONArray()).put("wires", new JSONArray()))));
+        assertEquals("PACKAGE_PATH", outside.code);
+    }
+
     @Test public void previewCannotOverwriteAnotherRegisteredArtifact() throws Exception {
         String first = alias(1).register("First"), second = alias(1).register("Second");
         Path target = temporary.getRoot().toPath().resolve(second);
@@ -273,5 +303,28 @@ public class HierarchyTest {
                 .put("format", "svg").put("output_path", target.toString())));
         assertEquals("PACKAGE_IMMUTABLE", immutable.code);
         assertArrayEquals(before, Files.readAllBytes(target));
+    }
+
+    @Test public void unusedChildInputHasNoExpandedConnection() throws Exception {
+        // The child's In has no net, so Digital keeps the parent pin in the parent net.
+        String child = new Fixture().add("a", "In", 1, "a").add("unused", "In", 1, "unused").add("y", "Out", 1, "y")
+                .net("same", endpoint("a", "output", "out"), endpoint("y", "input", "in")).register("Unused input");
+        Fixture parent = new Fixture().add("a", "In", 1, "a").add("b", "In", 1, "b").add("u0", child, 0, "first")
+                .add("y", "Out", 1, "y")
+                .net("left", endpoint("a", "output", "out"), endpoint("u0", "input", "a"))
+                .net("ignored", endpoint("b", "output", "out"), endpoint("u0", "input", "unused"))
+                .net("right", endpoint("u0", "output", "y"), endpoint("y", "input", "in"));
+        JSONObject output = parent.emit("circuit.dig", "Parent");
+        JSONObject inspection = call("circuit.inspect", paths(output));
+        assertTrue(inspection.toString(), inspection.getJSONObject("model").getBoolean("valid"));
+        JSONObject expanded = inspection.getJSONObject("expanded");
+        assertFalse(endpointIds(expanded).contains("u0"));
+        for (Object value : expanded.getJSONArray("nets")) {
+            Set<String> ids = endpointIds(new JSONObject().put("nets", new JSONArray().put(value)));
+            // Only the parent's own driver and its connecting tunnels remain on the ignored net.
+            if (ids.contains("b")) assertTrue(ids.toString(), ids.stream().allMatch(id -> id.equals("b") || id.startsWith("t")));
+        }
+        JSONObject simulation = call("circuit.simulate", paths(output).put("stimuli", new JSONArray().put(row("a", "0x1", "b", "0x0"))));
+        assertEquals("0x1", simulation.getJSONArray("samples").getJSONObject(0).getJSONObject("values").getString("y"));
     }
 }

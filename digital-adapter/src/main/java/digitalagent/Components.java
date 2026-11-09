@@ -124,6 +124,11 @@ final class Components {
                 }
             } else setAttribute(new ElementAttributes(), key, encode(value));
         }
+        // ModelEntry inverts configured inputs of every type, including types that do not list the key.
+        if (!description.hasAttribute(Keys.INVERTER_CONFIG) && attributes.contains(Keys.INVERTER_CONFIG)
+                && !Keys.INVERTER_CONFIG.getDefault().equals(attributes.get(Keys.INVERTER_CONFIG))) {
+            throw invalid("UNSUPPORTED_ATTRIBUTE", "Reloaded component uses unsupported attribute " + Keys.INVERTER_CONFIG.getKey());
+        }
         integer(element.getRotate(), "rotation quarter-turns", 0, 3);
         position(point(element.getPos()));
         validateResourceBounds(element);

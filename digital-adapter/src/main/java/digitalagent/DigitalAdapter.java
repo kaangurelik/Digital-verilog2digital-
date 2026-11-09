@@ -329,7 +329,11 @@ public final class DigitalAdapter {
             int drivers = 0;
             for (Pin pin : net.getPins()) {
                 JSONObject endpoint = endpoints.get(pin);
-                if (endpoint == null) throw new IllegalStateException("Native net contains an untracked pin");
+                if (endpoint == null) {
+                    // ModelCreator keeps a child's input pin in the parent net when the inner In has no net.
+                    if (unusedChildInput(pin)) continue;
+                    throw new IllegalStateException("Native net contains an untracked pin");
+                }
                 members.add(endpoint);
                 connected.add(pin);
                 if (pin.getDirection() != Pin.Direction.input) drivers++;
@@ -345,6 +349,11 @@ public final class DigitalAdapter {
         for (Map.Entry<Pin, JSONObject> item : endpoints.entrySet()) if (!connected.contains(item.getKey())) unconnected.add(item.getValue());
         unconnected.sort(Comparator.comparing(JsonSupport::canonical));
         report.put("nets", actual).put("unconnected", new JSONArray(unconnected)).put("topology_available", true);
+    }
+
+    private static boolean unusedChildInput(Pin pin) {
+        VisualElement owner = pin.getVisualElement();
+        return pin.getDirection() == Pin.Direction.input && owner != null && !Components.SUPPORTED.contains(owner.getElementName());
     }
 
     private static IdentityHashMap<Pin, JSONObject> endpoints(ModelCreator creator, IdentityHashMap<VisualElement, String> ids) {
@@ -388,7 +397,11 @@ public final class DigitalAdapter {
         Path output = absolutePath(params, "output_path");
         Path sidecar = params.has("sidecar_path") ? absolutePath(params, "sidecar_path") : null;
         if (context != null) context.validatePreviewOutput(output);
-        if (input.equals(output) || output.equals(sidecar)) throw invalid("OUTPUT_COLLISION", "Preview must have a different path from native circuit files");
+        // Without sidecar_path, packaged loads still read the adjacent sidecar.
+        Path adjacent = input.getFileName() == null ? null : input.resolveSibling(input.getFileName() + ".ids.json");
+        if (input.equals(output) || output.equals(sidecar) || output.equals(adjacent)) {
+            throw invalid("OUTPUT_COLLISION", "Preview must have a different path from native circuit files");
+        }
         String format = string(params, "format");
         if (!format.equals("svg") && !format.equals("png")) throw invalid("INVALID_FORMAT", "Preview format must be svg or png");
         double scale = 1;
@@ -509,7 +522,8 @@ public final class DigitalAdapter {
                 JSONObject valuesOut = new JSONObject();
                 JSONObject highZ = new JSONObject();
                 for (Map.Entry<String, ObservableValue> entry : outputs.entrySet()) {
-                    valuesOut.put(entry.getKey(), "0x" + Long.toUnsignedString(entry.getValue().getValue(), 16));
+                    // getValue() randomizes high-Z bits; report them only through high_z.
+                    valuesOut.put(entry.getKey(), "0x" + Long.toUnsignedString(entry.getValue().getValueHighZIsZero(), 16));
                     highZ.put(entry.getKey(), "0x" + Long.toUnsignedString(entry.getValue().getHighZ(), 16));
                 }
                 samples.put(new JSONObject().put("values", valuesOut).put("high_z", highZ));

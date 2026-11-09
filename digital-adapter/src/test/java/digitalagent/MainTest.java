@@ -166,6 +166,47 @@ public class MainTest {
         assertError(exchange(" ".repeat(Main.MAX_LINE_BYTES + 1), ECHO).get(0), -32600, "request_too_large");
     }
 
+    @Test(timeout = 10000)
+    public void longNumberLiteralsAreRejectedBeforeQuadraticConversion() throws Exception {
+        String longest = "1" + "0".repeat(Main.MAX_NUMBER_CHARS - 1);
+        JSONObject accepted = exchange(REQUEST.replace("\"id\":1", "\"id\":" + longest), ECHO).get(0);
+        assertEquals(new java.math.BigInteger(longest), accepted.get("id"));
+        for (String number : List.of("1" + "0".repeat(1_000_000), "-0." + "0".repeat(Main.MAX_NUMBER_CHARS))) {
+            String request = REQUEST.substring(0, REQUEST.length() - 1) + ",\"params\":{\"x\":" + number + "}}";
+            AtomicInteger calls = new AtomicInteger();
+            List<JSONObject> responses = exchange(request + "\n" + REQUEST, (method, params) -> {
+                calls.incrementAndGet();
+                return params;
+            });
+            assertEquals(1, calls.get());
+            assertEquals(2, responses.size());
+            assertError(responses.get(0), -32700, "json_number_too_long");
+            assertTrue(responses.get(0).isNull("id"));
+            assertTrue(responses.get(1).has("result"));
+        }
+    }
+
+    @Test
+    public void responsesBeyondTheClientLineLimitBecomeStructuredErrors() throws Exception {
+        // The client accepts at most MAX_LINE_BYTES characters per line, including the newline.
+        int overhead = new JSONObject().put("jsonrpc", "2.0").put("id", 1)
+                .put("result", new JSONObject().put("data", "")).toString().length();
+        for (int extra : new int[]{-1, 0}) {
+            int size = Main.MAX_LINE_BYTES - overhead + extra;
+            AtomicInteger calls = new AtomicInteger();
+            List<JSONObject> responses = exchange(REQUEST + "\n" + REQUEST, (method, params) -> calls.incrementAndGet() == 1
+                    ? new JSONObject().put("data", "x".repeat(size)) : params);
+            assertEquals(2, responses.size());
+            if (extra < 0) {
+                assertEquals(size, responses.get(0).getJSONObject("result").getString("data").length());
+            } else {
+                assertError(responses.get(0), -32603, "response_too_large");
+                assertEquals(1, responses.get(0).getInt("id"));
+            }
+            assertTrue(responses.get(1).has("result"));
+        }
+    }
+
     @Test
     public void excessiveNestingIsRejectedBeforeRecursiveParsing() throws Exception {
         String accepted = "[".repeat(Main.MAX_JSON_DEPTH) + "0" + "]".repeat(Main.MAX_JSON_DEPTH);
