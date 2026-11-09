@@ -4,6 +4,9 @@
 
 Digital is an easy-to-use digital logic designer and circuit simulator designed for educational purposes.
 
+This checkout also includes a Verilog-to-Digital converter and Windows desktop app.
+See the [user guide](USER_GUIDE.md) for setup, conversion and supported designs.
+
 ![screnshot](distribution/screenshot.png)
 
 ![screnshot2](distribution/screenshot2.png)
