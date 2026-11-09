@@ -95,6 +95,19 @@ def test_register_feedback_layout_preserves_reloaded_native_topology(adapter, tm
     assert compare_bit_topology(mapped, inspection)["valid"]
 
 
+def test_register_feedback_shares_q_bus_and_splits_only_reset_constants(adapter):
+    mapped = map_sequential(register_design(enable=True, reset=True), adapter)
+    types = {item["id"]: item["type"] for item in mapped["instances"]}
+    register = mapped["registers"][0]
+    q_bus = next(net for net in mapped["nets"] if net["bits"] == register["q_bits"])
+    assert sorted((types[item["instance_id"]], item["pin"]) for item in q_bus["endpoints"]) == [
+        ("D_FF", "Q"), ("Multiplexer", "in_0"), ("Out", "in")]
+    splitters = [origin for origin in mapped["origins"] if types[origin["instance_id"]] == "Splitter"]
+    assert [origin["purpose"] for origin in splitters] == ["merge"]
+    merged = next(net for net in mapped["nets"] if any(item["instance_id"] == splitters[0]["instance_id"] for item in net["endpoints"]) and net["width"] > 1)
+    assert merged["bits"] == ["1", "0", "1", "0"]
+
+
 def test_sequential_dispatch_and_metadata_are_deterministic(adapter):
     source = register_design(enable=True)
     mapped = map_design(source, adapter)

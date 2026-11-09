@@ -148,7 +148,8 @@ def test_datapath_is_deterministic_and_dispatch_preserves_scalar(adapter):
 
 @pytest.mark.parametrize("mutation", ["width", "pin_bits", "splitter_offset", "splitter_transfer", "missing_net", "missing_binding", "constant", "driver"])
 def test_corrupt_datapath_contract_is_rejected(adapter, mutation):
-    mapped = map_datapath(design(), adapter)
+    # Equal 4-bit vectors share splitter-free buses; extension keeps explicit splitters.
+    mapped = map_datapath(design("$add", 3, 5, 8, True, True) if mutation.startswith("splitter") else design(), adapter)
     if mutation == "width": mapped["pin_bindings"][0]["width"] = 64
     elif mutation == "pin_bits": next(binding for binding in mapped["pin_bindings"] if binding["width"] > 1)["bits"].reverse()
     elif mutation == "splitter_offset":
@@ -169,12 +170,80 @@ def test_corrupt_datapath_contract_is_rejected(adapter, mutation):
         validate_datapath(mapped)
 
 
+def wide_nets(mapped):
+    types = {item["id"]: item["type"] for item in mapped["instances"]}
+    return [(net, [endpoint for endpoint in net["endpoints"] if types[endpoint["instance_id"]] == "Splitter"])
+            for net in mapped["nets"] if net["width"] > 1]
+
+
+def test_equal_vectors_share_one_native_bus_without_splitters(adapter, tmp_path):
+    source = design("$and")
+    a = source["ports"][0]["bits"]
+    source["cells"][0]["ports"]["B"] = list(a)
+    mapped = map_datapath(source, adapter)
+    assert "Splitter" not in {item["type"] for item in mapped["instances"]}
+    buses = {tuple(net["bits"]): {(endpoint["instance_id"], endpoint["pin"]) for endpoint in net["endpoints"]}
+             for net, _ in wide_nets(mapped)}
+    assert buses[tuple(a)] == {("in0000", "out"), ("g0000", "In_1"), ("g0000", "In_2")}
+    assert buses[tuple(source["ports"][3]["bits"])] == {("g0000", "out"), ("out0000", "in")}
+    assert len(buses) == 3  # The unused b input keeps an isolated driven bus.
+    vectors = [{"a": value, "b": 0, "s": 0} for value in range(16)]
+    assert simulate_mapping(mapped, adapter, tmp_path, vectors) == [{"y": vector["a"]} for vector in vectors]
+
+
+def test_splitters_remain_only_where_bits_are_regrouped(adapter):
+    mapped = map_datapath(design("$add", 3, 5, 8, True, True), adapter)
+    adapted = {tuple(net["bits"]): len(splitters) for net, splitters in wide_nets(mapped)}
+    ports = {port["name"]: port["bits"] for port in design("$add", 3, 5, 8, True, True)["ports"]}
+    a, b, y = ports["a"], ports["b"], ports["y"]
+    assert adapted == {tuple(a): 1, tuple(b): 1, tuple(y): 0,
+                       tuple(a + [a[-1]] * 5): 1, tuple(b + [b[-1]] * 3): 1}
+    assert all(len(splitters) <= 1 for _, splitters in wide_nets(mapped))
+
+
+@pytest.mark.parametrize("mutation,code", [
+    ("duplicate_vector", "INVALID_MAPPING_NET"), ("extra_splitter", "INVALID_MAPPING_NET"),
+    ("splitter_only_bus", "INVALID_MAPPING_NET"), ("unadapted_carrier", "INVALID_MAPPING_BINDING")])
+def test_corrupt_shared_bus_contract_is_rejected(adapter, mutation, code):
+    mapped = map_datapath(design("$add", 3, 5, 8, True, True) if mutation != "duplicate_vector" else design(), adapter)
+    bindings = {(item["instance_id"], item["direction"], item["pin"]): item for item in mapped["pin_bindings"]}
+    if mutation == "duplicate_vector":
+        first, second = (net for net, _ in wide_nets(mapped) if any(item["instance_id"].startswith("in") for item in net["endpoints"]))
+        second["bits"] = list(first["bits"])
+        for endpoint in second["endpoints"]:
+            bindings[endpoint["instance_id"], endpoint["direction"], endpoint["pin"]]["bits"] = list(first["bits"])
+    elif mutation == "extra_splitter":
+        net, (splitter,) = next(item for item in wide_nets(mapped) if item[1] and item[1][0]["direction"] == "input")
+        for collection in ("instances", "descriptors", "origins"):
+            key = "instance_id" if collection == "origins" else "id"
+            mapped[collection].append({**deepcopy(next(item for item in mapped[collection] if item[key] == splitter["instance_id"])), key: "h99999"})
+        for binding in [item for item in mapped["pin_bindings"] if item["instance_id"] == splitter["instance_id"]]:
+            mapped["pin_bindings"].append({**deepcopy(binding), "instance_id": "h99999"})
+            target = net if binding["width"] > 1 else next(item for item in mapped["nets"] if item["id"] == f"b{binding['bits'][0]}")
+            target["endpoints"].append({"instance_id": "h99999", "direction": binding["direction"], "pin": binding["pin"]})
+        mapped["nets"].remove(net)
+        mapped["nets"].insert(0, net)
+    elif mutation == "splitter_only_bus":
+        net, splitters = next(item for item in wide_nets(mapped) if item[1])
+        net["endpoints"] = splitters
+    else:
+        net = next(net for net, splitters in wide_nets(mapped) if not splitters)
+        scalar = next(item for item in mapped["nets"] if item["width"] == 1 and type(item["bits"][0]) is int)
+        for endpoint in scalar["endpoints"]:
+            bindings[endpoint["instance_id"], endpoint["direction"], endpoint["pin"]]["bits"] = [net["bits"][0]]
+        scalar.update(id=f"b{net['bits'][0]}", bits=[net["bits"][0]], bit=net["bits"][0])
+    with pytest.raises(MappingError) as error:
+        validate_datapath(mapped)
+    assert error.value.code == code
+
+
 def test_unsupported_operations_fail_before_native_work():
     class NoCalls:
         def call(self, *_):
             pytest.fail("Unsupported cells must fail before native requests")
-    with pytest.raises(MappingError, match="no datapath-v1 mapping"):
+    with pytest.raises(MappingError, match="no datapath-v1 mapping") as error:
         map_datapath(design("$mul"), NoCalls())
+    assert (error.value.path, error.value.line) == ("fixture.v", 2)
 
 
 def test_null_native_width_is_checked_against_independent_binding_contract(adapter):

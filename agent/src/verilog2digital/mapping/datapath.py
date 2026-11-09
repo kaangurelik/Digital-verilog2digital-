@@ -1,7 +1,8 @@
 """Map binary datapaths with explicit LSB-first bus adapters.
 
-Each wide native pin gets a bus and splitter connected to canonical HDL bits.
-Slices, repeated bits, extensions and truncation are represented by wiring.
+Wide native pins carrying one identity vector share one bus. A bus gets one
+splitter to canonical HDL bits only when a bit is needed elsewhere. Slices,
+repeated bits, extensions and truncation are represented by wiring.
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import json
 
 from .. import contracts
 from ..adapter import AdapterError
-from ..frontend.errors import FrontendError
+from ..frontend.errors import FrontendError, source_location
 from ..ir import validate_design
 from .scalar import MappingError, _endpoint_key, _net_id
 
@@ -106,9 +107,11 @@ def _preflight(design, *, sequential=False, hierarchy_validated=False):
         if cell["type"] == "$dff":
             if sequential:
                 continue
-            raise MappingError("UNSUPPORTED_MAPPING_SEQUENTIAL", f"Cell {cell['id']} is a register; select the sequential-v1 mapping profile.")
+            raise MappingError("UNSUPPORTED_MAPPING_SEQUENTIAL", f"Cell {cell['id']} is a register; select the sequential-v1 mapping profile.",
+                               **source_location(cell["source"]))
         if cell["type"] not in _SUPPORTED:
-            raise MappingError("UNSUPPORTED_MAPPING_CELL", f"Cell {cell['id']} ({cell['type']}) has no datapath-v1 mapping. Use bitwise logic, muxes, add/subtract, comparisons, reductions or shifts.")
+            raise MappingError("UNSUPPORTED_MAPPING_CELL", f"Cell {cell['id']} ({cell['type']}) has no datapath-v1 mapping. Use bitwise logic, muxes, add/subtract, comparisons, reductions or shifts.",
+                               **source_location(cell["source"]))
 
 
 class _Builder:
@@ -116,7 +119,7 @@ class _Builder:
         self.adapter = adapter
         self.custom_types = custom_types or {}
         self.instances, self.descriptors, self.origins, self.pin_bindings = [], [], [], []
-        self.nets, self.cache = {}, {}
+        self.nets, self.cache, self.buses = {}, {}, {}
         all_bits = [bit for vector in [*design["ports"], *design["nets"]] for bit in vector["bits"]]
         all_bits += [bit for cell in design["cells"] for vector in cell["ports"].values() for bit in vector]
         all_bits += [bit for child in design.get("children", []) for vector in child["ports"].values() for bit in vector]
@@ -182,30 +185,42 @@ class _Builder:
             raise MappingError("INVALID_MAPPING_BINDING", "A physical net was assigned conflicting bit vectors.")
         net["endpoints"].append({"instance_id": identifier, "direction": direction, "pin": pin})
 
-    def add(self, identifier, kind, attributes, bindings, origin, *, unused_outputs=()):
+    def add(self, identifier, kind, attributes, bindings, origin):
         self.raw(identifier, kind, attributes, bindings, origin)
         for (direction, pin), bits in bindings.items():
             if len(bits) == 1:
                 self.connect(identifier, direction, pin, bits)
-                continue
-            if (direction, pin) in unused_outputs:
-                bus = f"v{self.bus_count:05d}"
-                self.bus_count += 1
-                self.connect(identifier, direction, pin, bits, bus)
-                continue
-            helper = self.helper()
-            wide_pin = _split_pin(0, len(bits))
-            wide_direction = "output" if direction == "input" else "input"
-            narrow_direction = direction
-            split_attrs = {"Input Splitting": f"1*{len(bits)}" if direction == "input" else str(len(bits)),
-                           "Output Splitting": str(len(bits)) if direction == "input" else f"1*{len(bits)}"}
-            split_bindings = {(wide_direction, wide_pin): bits,
-                              **{(narrow_direction, str(index)): [bit] for index, bit in enumerate(bits)}}
-            self.raw(helper, "Splitter", split_attrs, split_bindings,
-                     {"kind": "helper", "owner": identifier, "purpose": "merge" if direction == "input" else "split", "source": origin.get("source", "")})
-            bus = f"v{self.bus_count:05d}"
+            else:
+                self.buses.setdefault(tuple(bits), []).append((identifier, direction, pin, origin.get("source", "")))
+
+    def share_buses(self):
+        """Join equal LSB-first vectors on one bus; split only bits used elsewhere.
+
+        A bus needs a splitter when it has no native driver, repeats a bit, or
+        carries a bit that also occurs on a scalar pin or a different vector.
+        """
+        carriers = defaultdict(set)
+        for net in self.nets.values():
+            carriers[net["bits"][0]].add(None)
+        for vector in self.buses:
+            for bit in vector:
+                carriers[bit].add(vector)
+        for vector, pins in self.buses.items():
+            bits, bus = list(vector), f"v{self.bus_count:05d}"
             self.bus_count += 1
-            self.connect(identifier, direction, pin, bits, bus)
+            for identifier, direction, pin, _ in pins:
+                self.connect(identifier, direction, pin, bits, bus)
+            drivers = [item for item in pins if item[1] == "output"]
+            if drivers and len(set(vector)) == len(vector) and all(carriers[bit] == {vector} for bit in vector):
+                continue
+            owner, _, _, source = (drivers or pins)[0]
+            helper, wide_pin, split = self.helper(), _split_pin(0, len(bits)), bool(drivers)
+            wide_direction, narrow_direction = ("input", "output") if split else ("output", "input")
+            attributes = {"Input Splitting": str(len(bits)) if split else f"1*{len(bits)}",
+                          "Output Splitting": f"1*{len(bits)}" if split else str(len(bits))}
+            self.raw(helper, "Splitter", attributes,
+                     {(wide_direction, wide_pin): bits, **{(narrow_direction, str(index)): [bit] for index, bit in enumerate(bits)}},
+                     {"kind": "helper", "owner": owner, "purpose": "split" if split else "merge", "source": source})
             self.connect(helper, wide_direction, wide_pin, bits, bus)
             for index, bit in enumerate(bits):
                 self.connect(helper, narrow_direction, str(index), [bit])
@@ -251,10 +266,10 @@ def _map_components(design: dict, adapter, *, clock=None, hierarchy_context=None
         helper_origin = {"kind": "helper", "owner": identifier, "purpose": "operand adaptation", "source": cell["source"]}
         if kind == "$dff":
             width = params["WIDTH"]
+            # Fresh ~Q identities occur nowhere else, so their bus stays an isolated singleton.
             builder.add(identifier, "D_FF", {"Bits": width, "Default": "0x0"},
                         {("input", "D"): pins["D"], ("input", "C"): pins["CLK"],
-                         ("output", "Q"): pins["Q"], ("output", "~Q"): builder.fresh(width)}, origin,
-                        unused_outputs={("output", "~Q")})
+                         ("output", "Q"): pins["Q"], ("output", "~Q"): builder.fresh(width)}, origin)
             registers.append({"instance_id": identifier, "cell_id": cell["id"], "width": width,
                               "d_bits": list(pins["D"]), "q_bits": list(pins["Q"])})
             continue
@@ -328,6 +343,7 @@ def _map_components(design: dict, adapter, *, clock=None, hierarchy_context=None
             builder.add(child["instance_id"], child["type"], {"Label": child["native_name"]}, bindings,
                         {"kind": "child", "module_id": child["module_id"], "native_name": child["native_name"],
                          "hierarchy": child["hierarchy"], "source": child["source"]})
+    builder.share_buses()
     constants = sorted(net["bits"][0] for net in builder.nets.values() if net["width"] == 1 and type(net["bits"][0]) is str)
     for bit in constants:
         builder.add(f"const{bit}", "Const", {"Bits": 1, "Value": f"0x{bit}"}, {("output", "out"): [bit]},
@@ -413,7 +429,8 @@ def _validate_mapping(mapped: dict, *, sequential=False, custom_types=None) -> N
                     slots[slot] = bit
     if set(bindings) != actual_pins:
         raise MappingError("INVALID_MAPPING_BINDING", "Binding coverage must exactly match native pins.")
-    covered, net_ids, scalar_ids, isolated_bits = set(), set(), set(), set()
+    covered, net_ids, scalar_ids, vectors, adapted = set(), set(), set(), set(), set()
+    carriers = defaultdict(list)
     dependencies = {identifier: set() for identifier in instances}
     dependents = defaultdict(set)
     all_bits = set()
@@ -422,20 +439,9 @@ def _validate_mapping(mapped: dict, *, sequential=False, custom_types=None) -> N
             raise MappingError("INVALID_MAPPING_NET", "Expected nets need unique IDs and consistent LSB-first widths.")
         net_ids.add(net["id"])
         all_bits.update(net["bits"])
-        if net["width"] == 1:
-            bit = net["bits"][0]
-            if net["id"] != _net_id(bit) or bit in scalar_ids:
-                raise MappingError("INVALID_MAPPING_NET", "Each scalar identity must have one canonical physical net.")
-            scalar_ids.add(bit)
-        elif not net["id"].startswith("v") or len(net["endpoints"]) not in ({1, 2} if sequential else {2}):
-            raise MappingError("INVALID_MAPPING_NET", "Wide pins require a dedicated bus adapter or an explicitly unused sequential output.")
-        elif len(net["endpoints"]) == 1:
-            endpoint = net["endpoints"][0]
-            instance = instances.get(endpoint["instance_id"], {})
-            if instance.get("type") != "D_FF" or endpoint["direction"] != "output" or endpoint["pin"] != "~Q" or len(set(net["bits"])) != net["width"] or any(type(bit) is not int or bit in isolated_bits for bit in net["bits"]):
-                raise MappingError("INVALID_MAPPING_NET", "Only an isolated D_FF.~Q vector may omit its bus adapter.")
-            isolated_bits.update(net["bits"])
-        drivers = []
+        for bit in net["bits"]:
+            carriers[bit].append(net["id"])
+        drivers, splitters = [], 0
         for endpoint in net["endpoints"]:
             key = _endpoint_key(endpoint)
             if key not in actual_pins or key in covered:
@@ -445,6 +451,18 @@ def _validate_mapping(mapped: dict, *, sequential=False, custom_types=None) -> N
                 raise MappingError("INVALID_MAPPING_BINDING", f"Pin {key} disagrees with its physical net bit order.")
             if endpoint["direction"] == "output":
                 drivers.append(endpoint["instance_id"])
+            splitters += instances[endpoint["instance_id"]]["type"] == "Splitter"
+        if net["width"] == 1:
+            bit = net["bits"][0]
+            if net["id"] != _net_id(bit) or bit in scalar_ids:
+                raise MappingError("INVALID_MAPPING_NET", "Each scalar identity must have one canonical physical net.")
+            scalar_ids.add(bit)
+        elif not net["id"].startswith("v") or tuple(net["bits"]) in vectors or splitters > 1 or splitters == len(net["endpoints"]):
+            raise MappingError("INVALID_MAPPING_NET", f"Net {net['id']} must be the one shared bus of its identity vector, with native component pins and at most one splitter.")
+        else:
+            vectors.add(tuple(net["bits"]))
+            if splitters:
+                adapted.add(net["id"])
         if len(drivers) != 1:
             raise MappingError("INVALID_MAPPING_DRIVERS", f"Net {net['id']} needs exactly one physical driver.")
         for endpoint in net["endpoints"]:
@@ -455,16 +473,11 @@ def _validate_mapping(mapped: dict, *, sequential=False, custom_types=None) -> N
                     dependents[drivers[0]].add(destination)
     if covered != actual_pins:
         raise MappingError("INCOMPLETE_MAPPING", "Every native pin must occur in exactly one expected physical net.")
-    if scalar_ids & isolated_bits or scalar_ids | isolated_bits != all_bits:
-        raise MappingError("INVALID_MAPPING_BINDING", "Every bus bit must reach its canonical scalar net through an explicit splitter.")
-    if isolated_bits:
-        occurrences = defaultdict(int)
-        for binding in bindings.values():
-            for bit in binding["bits"]:
-                if bit in isolated_bits:
-                    occurrences[bit] += 1
-        if any(occurrences[bit] != 1 for bit in isolated_bits):
-            raise MappingError("INVALID_MAPPING_BINDING", "Unused register complement bits must occur only on their isolated native output pin.")
+    # A bit on one bus position needs no adapter. Every other occurrence must
+    # reach the bit's canonical scalar net through its bus's explicit splitter.
+    for bit, nets in carriers.items():
+        if len(nets) > 1 and (bit not in scalar_ids or any(net_id != _net_id(bit) and net_id not in adapted for net_id in nets)):
+            raise MappingError("INVALID_MAPPING_BINDING", f"Bit {bit} occurs on several physical carriers; each bus carrying it needs an explicit splitter to its canonical scalar net.")
     for bit in all_bits:
         drivers = canonical_drivers[bit]
         if len(drivers) != 1:

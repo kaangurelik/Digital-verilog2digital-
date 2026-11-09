@@ -104,6 +104,9 @@ def test_custom_native_pins_bind_exact_source_vectors_and_package_context(hierar
         for pin, bits in child["ports"].items():
             binding = next(item for item in mapped["pin_bindings"] if item["instance_id"] == child["instance_id"] and item["pin"] == pin)
             assert binding["bits"] == bits
+    # Ports and child pins with equal vectors share buses; nothing needs regrouping.
+    assert "Splitter" not in {item["type"] for item in mapped["instances"]}
+    assert all(len(net["endpoints"]) == 2 for net in mapped["nets"])
     assert layout_reserved(mapped)["geometry"]["valid"]
 
 

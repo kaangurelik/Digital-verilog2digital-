@@ -7,7 +7,7 @@ import json
 
 from .. import contracts
 from ..adapter import AdapterError
-from ..frontend.errors import FrontendError
+from ..frontend.errors import FrontendError, source_location
 from ..ir import validate_design
 
 
@@ -54,19 +54,21 @@ def _preflight(design: dict) -> None:
         if len(vector["bits"]) != 1:
             raise MappingError("UNSUPPORTED_MAPPING_WIDTH",
                                f"Signal {vector['name']} has {len(vector['bits'])} bits. "
-                               "The scalar-v1 mapper accepts one-bit signals; bus mapping is a later profile.")
+                               "The scalar-v1 mapper accepts one-bit signals; bus mapping is a later profile.",
+                               **source_location(vector["source"]))
     for cell in design["cells"]:
+        location = source_location(cell["source"])
         if cell["type"] == "$dff":
             raise MappingError("UNSUPPORTED_MAPPING_SEQUENTIAL",
-                               f"Cell {cell['id']} is a register. Use the later sequential mapping profile.")
+                               f"Cell {cell['id']} is a register. Use the later sequential mapping profile.", **location)
         if cell["type"] not in _SUPPORTED:
             raise MappingError("UNSUPPORTED_MAPPING_CELL",
                                f"Cell {cell['id']} ({cell['type']}) has no scalar mapping. "
-                               "Use supported bitwise logic or a multiplexer; arithmetic expansion is not enabled.")
+                               "Use supported bitwise logic or a multiplexer; arithmetic expansion is not enabled.", **location)
         for pin, bits in cell["ports"].items():
             if len(bits) != 1:
                 raise MappingError("UNSUPPORTED_MAPPING_WIDTH",
-                                   f"Cell {cell['id']}.{pin} has {len(bits)} bits; scalar-v1 requires one-bit operands and results.")
+                                   f"Cell {cell['id']}.{pin} has {len(bits)} bits; scalar-v1 requires one-bit operands and results.", **location)
     constants = {bit for port in design["ports"] for bit in port["bits"] if type(bit) is str}
     constants.update(bit for cell in design["cells"] for bits in cell["ports"].values()
                      for bit in bits if type(bit) is str)
