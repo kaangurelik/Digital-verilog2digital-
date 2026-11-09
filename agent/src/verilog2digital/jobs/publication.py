@@ -10,6 +10,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import time
 import uuid
 
 from ..frontend.errors import FrontendError
@@ -61,7 +62,17 @@ def atomic_document(path: Path, document) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        # A Windows reader without delete sharing briefly denies replacement of
+        # current.json; retry while the old complete selection stays in place.
+        delays = (0.01, 0.02, 0.04, 0.08, 0.1)
+        for attempt in range(len(delays) + 1):
+            try:
+                os.replace(temporary, path)
+                break
+            except OSError as error:
+                if os.name != "nt" or getattr(error, "winerror", None) not in (5, 32) or attempt == len(delays):
+                    raise
+                time.sleep(delays[attempt])
     finally:
         try:
             temporary.unlink(missing_ok=True)
@@ -273,6 +284,7 @@ def publish_revision(candidate_dir: Path, output_root: Path, job_id: str, *, exp
                 "output_root": str(root), "directory": str(revision), "revision": str(revision),
                 "current": str(root / "current.json"), "manifest": str(revision / "manifest.json"),
                 **{label: str(contained_file(revision, item["path"])) for label, item in published["artifacts"].items()}}
+        checkpoint()  # A cancellation or deadline reached during final hashing still applies.
         atomic_document(root / "current.json", selection)
         # No cancellation check or artifact I/O follows the selection.
         return result

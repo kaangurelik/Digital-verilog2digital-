@@ -179,11 +179,15 @@ class JobStore:
 
 def recover_unlocked(root: Path):
     recovered = []
-    for path in sorted(Path(root).glob("*/job.json"))[:4096]:
+    root = Path(root).resolve()
+    for path in sorted(root.glob("*/job.json"))[:4096]:
         if not JOB_ID.fullmatch(path.parent.name):
             continue
         store, value = None, None
         try:
+            resolved = path.parent.resolve(strict=True)
+            if resolved != path.parent.absolute() or resolved.parent != root:
+                continue  # A redirected record may belong to another manager's live job.
             store = JobStore(path.parent)
             value = store.read()
             if value["state"] not in TERMINAL:

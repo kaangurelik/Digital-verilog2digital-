@@ -128,6 +128,82 @@ def test_permanent_reader_denial_is_bounded_and_preserves_old_json(tmp_path, mon
     assert list(tmp_path.iterdir()) == [path]
 
 
+def test_cancel_racing_job_completion_reports_terminal_status(tmp_path, monkeypatch):
+    store = JobStore.create(tmp_path, request())
+    store.update(state="running", stage="inspecting")
+    real_write = manager.atomic_json
+    def complete_during_request(path, value):
+        real_write(path, value)
+        if Path(path).name == "cancel.json":
+            store.update(state="ready", stage="ready", result={"valid": True})
+    monkeypatch.setattr(manager, "atomic_json", complete_during_request)
+    assert cancel_job(store.directory) == {"job_id": store.directory.name, "accepted": False,
+                                           "reason": "already_terminal", "state": "ready"}
+
+
+def test_cancel_after_selection_commit_reports_committed_ready_job(tmp_path):
+    output = tmp_path / "output"
+    raw = request("convert", output)
+    store = JobStore.create(tmp_path, raw)
+    store.update(state="running", stage="publishing")
+    directory, sources = candidate(tmp_path)
+    publish(directory, sources, output, job_id=raw["job_id"])
+    assert cancel_job(store.directory) == {"job_id": raw["job_id"], "accepted": False,
+                                           "reason": "already_committed", "state": "ready"}
+    other = JobStore.create(tmp_path, request("convert", output))
+    other.update(state="running", stage="mapping")
+    assert cancel_job(other.directory)["accepted"] is True
+
+
+def test_worker_temporary_variables_all_select_owned_job_storage(tmp_path, monkeypatch):
+    from verilog2digital.jobs import processes
+    store = JobStore.create(tmp_path, request())
+    captured = {}
+    monkeypatch.setattr(processes.ManagedWorker, "start", classmethod(lambda cls, argv, **options: captured.update(options)))
+    manager._launch_worker(store, JobLimits())
+    owned = str(store.directory / "tmp")
+    assert {name: captured["env"][name] for name in ("TMP", "TEMP", "TMPDIR", "V2D_JOB_TMP")} == dict.fromkeys(
+        ("TMP", "TEMP", "TMPDIR", "V2D_JOB_TMP"), owned)
+
+
+def test_oversized_worker_diagnostic_still_reaches_supervisor_with_its_code(tmp_path, monkeypatch, capsys):
+    from verilog2digital.contracts import validate
+    from verilog2digital.jobs import worker, workspace
+    raw = request()
+    directory = tmp_path / raw["job_id"]
+    directory.mkdir()
+    atomic_json(directory / "request.json", raw)
+    def failing_snapshot(project, job_dir):
+        raise FrontendError("SLANG_ERROR", "ğ" * 100000, path=str(tmp_path / "source.v"), line=3, column=4)
+    monkeypatch.setattr(workspace, "snapshot_project", failing_snapshot)
+    monkeypatch.setattr(worker, "_suppress_crash_dialogs", lambda: None)
+    assert worker.main(["--request", str(directory / "request.json")]) == 1
+    line = capsys.readouterr().out.splitlines()[-1]
+    assert len(line.encode("utf-8")) <= 65536
+    event = json.loads(line)
+    validate("job-event-v1", event)
+    diagnostic = event["params"]["diagnostic"]
+    assert event["method"] == "job.error" and diagnostic["code"] == "SLANG_ERROR"
+    assert diagnostic["line"] == 3 and diagnostic["message"].endswith("[truncated; see worker.stderr.log]")
+    assert read_json(directory / "worker-error.json") == {"diagnostic": diagnostic}
+
+
+def test_worker_notification_bound_matches_supervisor_line_bound(capsys):
+    import queue
+    from verilog2digital.jobs import worker
+    identifier = "a" * 32
+    empty = len(json.dumps({"jsonrpc": "2.0", "method": "job.result", "params": {"job_id": identifier, "result_path": ""}}))
+    worker._notify(identifier, "job.result", result_path="x" * (65535 - empty))
+    line = capsys.readouterr().out.encode("utf-8")
+    assert len(line) == 65536
+    events = queue.Queue()
+    manager._read_events(io.BytesIO(line), events, threading.Event())
+    assert events.get_nowait()["params"]["result_path"] == "x" * (65535 - empty)
+    with pytest.raises(RuntimeError, match="64 KiB"):
+        worker._notify(identifier, "job.result", result_path="x" * (65536 - empty))
+    assert capsys.readouterr().out == ""
+
+
 def test_os_lease_excludes_concurrent_managers_and_recovers_after_close(tmp_path):
     lock = tmp_path / "manager.lock"
     with file_lease(lock):

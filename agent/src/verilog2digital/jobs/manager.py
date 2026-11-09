@@ -124,12 +124,30 @@ def job_status(job_dir):
     return JobStore(Path(job_dir)).read()
 
 
+def _selected_by_output(status):
+    output = status["request"].get("output_root")
+    if status["kind"] != "convert" or not output:
+        return False
+    try:
+        from .publication import current_revision
+        current, _ = current_revision(Path(output))
+    except (OSError, ValueError):
+        return False
+    return current is not None and current["job_id"] == status["job_id"]
+
+
 def cancel_job(job_dir):
     store = JobStore(Path(job_dir))
     status = store.read()
     if status["state"] in TERMINAL:
         return {"job_id": status["job_id"], "accepted": False, "reason": "already_terminal", "state": status["state"]}
     atomic_json(store.directory / "cancel.json", {"job_id": status["job_id"], "requested_utc": utc_now()})
+    # The job may finish, or commit its selection, while the request is written.
+    status = store.read()
+    if status["state"] in TERMINAL:
+        return {"job_id": status["job_id"], "accepted": False, "reason": "already_terminal", "state": status["state"]}
+    if _selected_by_output(status):
+        return {"job_id": status["job_id"], "accepted": False, "reason": "already_committed", "state": "ready"}
     return {"job_id": status["job_id"], "accepted": True, "state": "cancellation_requested"}
 
 
@@ -151,7 +169,9 @@ def _launch_worker(store, limits):
     environment["V2D_JAVA_HEAP_BYTES"] = str(limits.java_heap_bytes)
     temporary = store.directory / "tmp"
     temporary.mkdir()
-    environment.update(TMP=str(temporary), TEMP=str(temporary), V2D_JOB_TMP=str(temporary), V2D_JOB_ID=store.directory.name)
+    # Python's tempfile reads TMPDIR first; every temporary location belongs to the job.
+    environment.update(TMP=str(temporary), TEMP=str(temporary), TMPDIR=str(temporary),
+                       V2D_JOB_TMP=str(temporary), V2D_JOB_ID=store.directory.name)
     return ManagedWorker.start([executable, "-X", "faulthandler", "-m", "verilog2digital.jobs.worker",
                                 "--request", str(store.directory / "request.json")],
         cwd=store.directory, env=environment, stderr_path=store.directory / "worker.stderr.log",

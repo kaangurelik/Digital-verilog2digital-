@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 import threading
+import traceback
 
 from .contracts import ContractError
 from .frontend.errors import FrontendError
@@ -21,7 +22,7 @@ def _definitions(values, *, parameter=False):
         if "=" in item:
             name, value = item.split("=", 1)
         elif parameter:
-            raise FrontendError("INVALID_PARAMETER", "Parameter overrides use NAME=integer")
+            raise FrontendError("INVALID_PARAMETER", "Parameter overrides use NAME=value")
         else:
             name, value = item, "1"
         if name in result:
@@ -74,7 +75,7 @@ def _source_flags(parser, *, conversion=False):
     parser.add_argument("-t", "--top", help="Top module; discovered if unambiguous")
     parser.add_argument("-I", "--include", action="append", default=[], type=Path)
     parser.add_argument("-D", "--define", action="append", default=[], help="Macro NAME or NAME=value")
-    parser.add_argument("-P", "--parameter", action="append", default=[], help="Top parameter NAME=integer")
+    parser.add_argument("-P", "--parameter", action="append", default=[], help="Top parameter NAME=value (0 through 2147483647, or an unsigned sized literal such as 8'hff)")
     _limits_flags(parser)
     _output_flags(parser)
     if conversion:
@@ -88,7 +89,8 @@ def _source_flags(parser, *, conversion=False):
         parser.add_argument("--layout", choices=("auto", "reserved"))
         parser.add_argument("--tunnels", action=argparse.BooleanOptionalAction, default=None)
         parser.add_argument("--layout-timeout", type=float, help="Compact layout budget (1 through 120 seconds)")
-        parser.add_argument("--llm", choices=("off", "auto", "4b", "14b"), help="Optional local model refinement; default off")
+        parser.add_argument("--llm", choices=("off", "auto", "4b", "14b"),
+                            help="Optional local model refinement; default off, auto selects the default 4b model")
         parser.add_argument("--refinement-budget", type=float, help="Total optional refinement budget, 1 through 300 seconds")
         parser.add_argument("--refinement-attempts", type=int, help="Proposal limit across all canvases, 1 through 8")
         parser.add_argument("--layout-request", help="A short spacing/grouping preference for the local model")
@@ -115,6 +117,14 @@ def _project_and_options(options):
         value = getattr(options, argument, None)
         if value is not None:
             conversion[field] = value
+    # Command-line values use the project-file bounds before any output is created.
+    for argument, valid, rule in (
+            ("spacing", lambda value: 40 <= value <= 400 and value % 20 == 0, "a multiple of 20 from 40 through 400"),
+            ("layout_timeout", lambda value: 1 <= value <= 120, "from 1 through 120 seconds"),
+            ("random_vectors", lambda value: 0 <= value <= 2048, "from 0 through 2048")):
+        value = getattr(options, argument, None)
+        if value is not None and not valid(value):
+            raise FrontendError("INVALID_OPTION", f"--{argument.replace('_', '-')} must be {rule}")
     if getattr(options, "trace", None):
         conversion["sequential_trace"] = _trace(options.trace)
     refinement = dict(conversion.get("refinement", {}))
@@ -143,7 +153,7 @@ def _project_and_options(options):
             raise FrontendError("REFINEMENT_OPTIONS", "Select a local model or recorded action replay")
         recorded = read_document(options.replay_actions, limit=600000)
         if not isinstance(recorded, dict) or set(recorded) != {"schema_version", "responses"} or type(recorded["schema_version"]) is not int or recorded["schema_version"] != 1:
-            raise FrontendError("INVALID_REPLAY", "Replay files require schema_version1 and a responses list of raw JSON strings")
+            raise FrontendError("INVALID_REPLAY", "Replay files require schema_version 1 and a responses list of raw JSON strings")
         refinement.update(mode="replay", responses=recorded["responses"])
     if refinement:
         from .llm.config import configuration
@@ -285,7 +295,11 @@ def main(argv=None):
                 if not 1 <= options.repeats <= 5:
                     raise FrontendError("BENCHMARK_LIMIT", "Benchmark repeats must be between 1 and 5")
                 output = Path(output).resolve()
-                output.mkdir(parents=True, exist_ok=False)
+                try:
+                    output.mkdir(parents=True, exist_ok=False)
+                except FileExistsError as error:
+                    raise FrontendError("OUTPUT_EXISTS", "Choose a new benchmark directory; existing results are preserved",
+                                        path=str(output)) from error
                 runs = []
                 for index in range(options.repeats):
                     for strategy in ("auto", "reserved"):
@@ -303,8 +317,12 @@ def main(argv=None):
             output_finished = True
             _print_result(result, options)
         return 0 if result.get("state") not in {"failed", "incomplete", "cancelled", "interrupted"} and result.get("valid") is not False else 1
-    except (FrontendError, ContractError, OSError, RuntimeError, ValueError) as error:
-        diagnostic = error.as_dict() if isinstance(error, FrontendError) else {"code": "COMMAND_FAILED", "message": str(error)}
+    except Exception as error:
+        if not isinstance(error, (FrontendError, ContractError, OSError, RuntimeError, ValueError)):
+            # An unexpected failure still ends the --events/--json protocol with one error record.
+            traceback.print_exc(file=sys.stderr)
+        diagnostic = error.as_dict() if isinstance(error, FrontendError) else {
+            "code": "COMMAND_FAILED", "message": str(error) or type(error).__name__}
         result = {"schema_version": 2, "state": "cancelled" if diagnostic["code"] == "CANCELLED" else "failed", "diagnostic": diagnostic}
         if options.events:
             with output_lock:

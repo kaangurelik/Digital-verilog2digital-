@@ -136,7 +136,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, required=True, help="New directory for isolated jobs, revisions and measurements")
     parser.add_argument("--cases", nargs="+", choices=list(CASES), default=list(CASES))
     parser.add_argument("--layout-timeout", type=float, default=2, help="Compact routing search seconds before bounded fallback")
-    parser.add_argument("--stress-timeout", type=float, default=10, help="Native248 planning and routing budget; separate from small HDL jobs")
+    parser.add_argument("--stress-timeout", type=float, default=10, help="Native 248-component planning and routing budget; separate from small HDL jobs")
     parser.add_argument("--deadline", type=float, default=300)
     parser.add_argument("--memory-mib", type=int, default=6144)
     parser.add_argument("--java-heap-mib", type=int, default=1024)

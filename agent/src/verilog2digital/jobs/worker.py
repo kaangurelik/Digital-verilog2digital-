@@ -18,9 +18,23 @@ def _suppress_crash_dialogs():
 def _notify(identifier, method, **params):
     event = {"jsonrpc": "2.0", "method": method, "params": {"job_id": identifier, **params}}
     data = json.dumps(event, ensure_ascii=False, allow_nan=False)
-    if len(data.encode("utf-8")) > 65536:
+    if len(data.encode("utf-8")) + 1 > 65536:  # The supervisor bound includes the newline.
         raise RuntimeError("Worker notification exceeds 64 KiB")
     print(data, flush=True)
+
+
+def _bounded(diagnostic):
+    """Keep a terminal diagnostic within the 64 KiB notification protocol."""
+    message = diagnostic.get("message")
+    if isinstance(message, str) and len(message.encode("utf-8")) > 16384:
+        text = message.encode("utf-8")[:16384].decode("utf-8", "ignore")
+        diagnostic = {**diagnostic, "message": text + " [truncated; see worker.stderr.log]"}
+    if len(json.dumps(diagnostic, ensure_ascii=False, default=str).encode("utf-8")) > 32768:
+        message = diagnostic.get("message")
+        if not isinstance(message, str):
+            message = ("" if message is None else str(message)).encode("utf-8")[:16384].decode("utf-8", "ignore")
+        diagnostic = {"code": str(diagnostic.get("code", "WORKER_ERROR"))[:128], "message": message}
+    return diagnostic
 
 
 def main(argv=None):
@@ -111,8 +125,8 @@ def main(argv=None):
     except Exception as error:
         if source_map is not None and isinstance(error, FrontendError):
             error = restore_error(error, source_map)
-        diagnostic = error.as_dict() if isinstance(error, FrontendError) else {
-            "code": "WORKER_MEMORY" if isinstance(error, MemoryError) else "WORKER_ERROR", "message": str(error) or type(error).__name__}
+        diagnostic = _bounded(error.as_dict() if isinstance(error, FrontendError) else {
+            "code": "WORKER_MEMORY" if isinstance(error, MemoryError) else "WORKER_ERROR", "message": str(error) or type(error).__name__})
         traceback.print_exc(file=sys.stderr)
         atomic_json(directory / "worker-error.json", {"diagnostic": diagnostic})
         _notify(identifier, "job.error", diagnostic=diagnostic)

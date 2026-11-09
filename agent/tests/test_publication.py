@@ -1,11 +1,13 @@
 """Replacement, interruption, and tampering must preserve the selected bundle."""
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 import shutil
 
 import pytest
 
+from verilog2digital.jobs import publication
 from verilog2digital.jobs.publication import (PublicationError, atomic_document, bundle_bindings,
     current_revision, digest, output_lease, publish_revision, read_document)
 
@@ -87,13 +89,56 @@ def test_source_change_at_last_checkpoint_never_selects_revision(tmp_path):
     def change():
         nonlocal calls
         calls += 1
-        if calls == 7:  # initial, five copies, and the last check before selection
+        if calls == 7:  # initial, five copies, and the check before final source hashing
             Path(next(iter(sources))).write_text("changed", encoding="utf-8")
     with pytest.raises(PublicationError) as error:
         publish(directory, sources, output, checkpoint=change)
     assert error.value.code == "SOURCE_CHANGED"
     assert not (output / "current.json").exists()
     assert not (output / "revisions" / ("a" * 32)).exists()
+
+
+def test_cancellation_after_final_source_hashing_still_prevents_selection(tmp_path, monkeypatch):
+    directory, sources = candidate(tmp_path)
+    output = tmp_path / "output"
+    publish(directory, sources, output)
+    selected = (output / "current.json").read_bytes()
+    verified = []
+    real_verify = publication.verify_sources
+    monkeypatch.setattr(publication, "verify_sources", lambda hashes: verified.append(1) or real_verify(hashes))
+    def cancel():
+        if len(verified) == 2:  # Both source checks have finished; only the commit remains.
+            raise RuntimeError("cancelled")
+    with pytest.raises(RuntimeError, match="cancelled"):
+        publish(directory, sources, output, job_id="b" * 32, replace=True, checkpoint=cancel)
+    assert (output / "current.json").read_bytes() == selected
+    assert not (output / "revisions" / ("b" * 32)).exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows atomic replacement sharing regression")
+def test_selection_commit_retries_while_a_reader_denies_delete_sharing(tmp_path, monkeypatch):
+    from test_jobs import _reader_without_delete_sharing
+    directory, sources = candidate(tmp_path)
+    output = tmp_path / "output"
+    publish(directory, sources, output)
+    selected = (output / "current.json").read_bytes()
+    real_replace, denials = os.replace, []
+    with _reader_without_delete_sharing(output / "current.json") as release:
+        def replace(source, destination):
+            try:
+                return real_replace(source, destination)
+            except OSError as error:
+                if Path(destination).name == "current.json" and not denials:
+                    denials.append(error.winerror)
+                    assert (output / "current.json").read_bytes() == selected
+                    release()
+                raise
+        monkeypatch.setattr(publication.os, "replace", replace)
+        second = publish(directory, sources, output, job_id="b" * 32, replace=True)
+    assert denials and denials[0] in (5, 32)
+    assert current_revision(output)[0]["job_id"] == "b" * 32
+    assert Path(second["circuit"]).read_text() == "circuit bytes"
+    assert not [path for path in output.iterdir() if path.name.endswith(".tmp")]
 
 
 def test_changed_copy_cannot_replace_valid_revision(tmp_path, monkeypatch):

@@ -198,6 +198,24 @@ def test_disk_budget_failure_terminates_worker_before_accepting_a_result(project
     assert workers[0].terminated and workers[0].closed
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Windows directory junction containment")
+def test_recovery_never_follows_a_junction_into_another_managers_live_job(tmp_path):
+    import _winapi
+    root, other = tmp_path / "root", tmp_path / "other"
+    root.mkdir()
+    other.mkdir()
+    live = completed(other, 7, state="running")
+    link = root / live.directory.name
+    _winapi.CreateJunction(str(live.directory), str(link))
+    try:
+        assert recover_unlocked(root) == []
+        assert read_json(live.path)["state"] == "running"
+        assert prune_jobs(root, max_jobs=1)["removed_jobs"] == []
+    finally:
+        os.rmdir(link)  # Remove only this test's junction.
+    assert live.path.exists()
+
+
 def test_recovery_does_not_mark_tampered_committed_bundle_ready(tmp_path):
     output = tmp_path / "output"
     raw = request("convert", output)
