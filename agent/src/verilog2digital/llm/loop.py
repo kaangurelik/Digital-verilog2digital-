@@ -245,10 +245,10 @@ class RefinementSession:
         immutable_hash = _json_hash(mapped)
         best = deepcopy(record)
         identity = {"canvas": len(self.report["canvases"]), "top": mapped["top"],
-                    "module_id": mapped.get("module_id")}
+                    "module_id": mapped.get("module_id"), "baseline_strategy": best["layout"].get("strategy")}
         if best["layout"].get("tunnels", {}).get("nets"):
             canvas = {**identity, "accepted": 0, "attempts": [],
-                      "skipped": "Existing named-tunnel branches are not yet supported by fixed-placement rerouting"}
+                      "skipped": "Named-tunnel canvases are refined as visible wires before tunnel insertion; use refine_tunneled"}
             self.report["canvases"].append(canvas)
             return {**record, "refinement": canvas}
         canvas = {**identity, "baseline_id": candidate_id(mapped, best["layout"]),
@@ -315,7 +315,7 @@ class RefinementSession:
                 if isinstance(raw, bytes):
                     raw = raw.decode("utf-8")
                 if not isinstance(raw, str) or len(raw.encode("utf-8")) > 65536:
-                    raise ValueError("Model response must be UTF-8 JSON of at most64 KiB")
+                    raise ValueError("Model response must be UTF-8 JSON of at most 64 KiB")
                 # Preserve exactly what the model said, including invalid JSON.
                 atomic_document(attempt_dir / "response.json", {"raw_text": raw})
                 attempt["response"] = raw
@@ -370,11 +370,90 @@ class RefinementSession:
         check_record(best)
         if _json_hash(mapped) != immutable_hash:
             raise FrontendError("ELECTRICAL_INTENT_CHANGED", "Candidate processing changed immutable mapped intent")
+        if canvas["accepted"]:
+            # A rerouted canvas still derives from the baseline's fallback and tunnel decisions.
+            best["layout"] = {**best["layout"], **{key: deepcopy(original["layout"][key]) for key in
+                              ("fallback_used", "fallback_reason", "tunnels") if key in original["layout"]}}
         canvas["selected_id"] = candidate_id(mapped, best["layout"])
         canvas["selected_metrics"] = deepcopy(best["validation"]["geometry"]["metrics"])
         self._status()
         atomic_document(folder / "selection.json", canvas)
         return {**best, "refinement": canvas}
+
+    def refine_tunneled(self, mapped, record, visible, *, check, adapter, package=None):
+        """Refine a tunnel canvas as visible wires, then insert the same tunnels.
+
+        record is the natively validated tunneled canvas and visible its
+        visible-wire layout. check(layout, mapped, name) emits and natively
+        validates another canvas of this mapping. Return the published record
+        and the canvas before refinement that shares its component identities.
+        """
+        if not self.enabled:
+            return record, record
+        from ..adapter import AdapterError
+        from ..layout.scalar import LayoutError
+        from ..layout.tunnels import add_long_tunnels
+        check_record(record)
+        plan = deepcopy(record["layout"]["tunnels"]["nets"])
+        summary = {"refined_canvas": "visible_wires",
+                   "planned": [{"net_id": item["net_id"], "name": item["name"]} for item in plan]}
+
+        def unusable(error):
+            # A closed adapter cannot validate the remaining conversion.
+            return isinstance(error, AdapterError) and getattr(adapter, "_closed", False)
+
+        try:
+            base = check(visible, mapped, "visible")
+            if base["validation"]["valid"] is not True:
+                raise LayoutError("VISIBLE_CANVAS_INVALID", "The visible-wire canvas failed native validation")
+        except Exception as error:
+            if unusable(error):
+                raise
+            canvas = {"canvas": len(self.report["canvases"]), "top": mapped["top"], "module_id": mapped.get("module_id"),
+                      "baseline_strategy": visible.get("strategy"), "accepted": 0, "attempts": [],
+                      "skipped": "The validated named tunnels were kept unrefined because their visible-wire canvas could not be validated",
+                      "diagnostic": _diagnostic(error), "tunnels": {**summary, "outcome": "not_refined"},
+                      "published_metrics": deepcopy(record["validation"]["geometry"]["metrics"])}
+            self.report["canvases"].append(canvas)
+            self.report["diagnostics"].append({"code": "TUNNEL_CANVAS_UNREFINED", "canvas": canvas["canvas"],
+                "message": "The visible-wire canvas failed validation, so its validated named tunnels were published unrefined"})
+            return {**record, "refinement": canvas}, record
+        selected = self.refine(mapped, {**base, "mapped": deepcopy(mapped)}, package=package)
+        canvas = selected["refinement"]
+        if not canvas["accepted"]:
+            canvas["tunnels"] = {**summary, "outcome": "baseline_retained"}
+            published, before = {**record, "refinement": canvas}, record
+        else:
+            if self.progress:
+                self.progress("inserting_tunnels")
+            layout = None
+            try:
+                layout = add_long_tunnels(selected["layout"], mapped, adapter, nets=plan)
+                if [item["net_id"] for item in layout["tunnels"]["nets"]] != [item["net_id"] for item in plan]:
+                    raise LayoutError("TUNNEL_PLAN_INCOMPLETE", "The refined canvas has no clear position for every planned named tunnel")
+                tunneled = check(layout, mapped, "tunneled")
+                if tunneled["validation"]["valid"] is not True:
+                    raise LayoutError("TUNNEL_VALIDATION", "The refined canvas with named tunnels failed native validation")
+                canvas["tunnels"] = {**summary, "outcome": "inserted_after_refinement"}
+                published = {**tunneled, "mapped": deepcopy(layout["validation_mapping"]), "refinement": canvas}
+                before = record
+            except Exception as error:
+                if unusable(error):
+                    raise
+                canvas["tunnels"] = {**summary, "outcome": "visible_fallback",
+                                     "fallback_reason": "native_tunnel_validation", "diagnostic": _diagnostic(error)}
+                if layout is not None:
+                    canvas["tunnels"].update({key: deepcopy(layout["tunnels"][key]) for key in ("skipped", "budget_exhausted")})
+                published = {**selected, "layout": {**selected["layout"], "fallback_used": True,
+                                                    "fallback_reason": "native_tunnel_validation"}}
+                before = base
+                self.report["diagnostics"].append({"code": "TUNNEL_FALLBACK", "canvas": canvas["canvas"],
+                    "message": "Named tunnels failed after refinement, so the refined visible-wire canvas was published"})
+        check_record(published)
+        check_record(before)
+        canvas["published_metrics"] = deepcopy(published["validation"]["geometry"]["metrics"])
+        atomic_document(self.directory / f"canvas-{canvas['canvas']:04d}" / "selection.json", canvas)
+        return published, before
 
 
 def install_candidate(record, path):

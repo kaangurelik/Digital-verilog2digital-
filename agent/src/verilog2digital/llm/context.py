@@ -105,7 +105,10 @@ def build_context(mapped: dict, layout: dict, *, validation: dict | None = None,
     for item in (feedback or [])[-4:]:
         if not isinstance(item, dict):
             continue
-        diagnostics.append(item.get("diagnostic", item))
+        # Attempt rows may carry only quality; other rows are diagnostics.
+        diagnostic = item.get("diagnostic", None if "quality" in item else item)
+        if diagnostic is not None:
+            diagnostics.append(diagnostic)
         quality = item.get("quality")
         if isinstance(quality, dict):
             deltas = quality.get("deltas", {})
@@ -114,21 +117,23 @@ def build_context(mapped: dict, layout: dict, *, validation: dict | None = None,
                                   "deltas_candidate_minus_incumbent": {key: deltas[key] for key in METRICS
                                       if isinstance(deltas, dict) and type(deltas.get(key)) is int and abs(deltas[key]) <= 10**18}})
     diagnostics = [{"code": _text(item.get("code", "feedback"), 64), "message": _text(item.get("message", ""), 180)}
-                   for item in diagnostics if isinstance(item, dict)][:4]
+                   for item in diagnostics if isinstance(item, dict)]
     context = {"schema_version": 1, "candidate_id": summary["candidate_id"], "task": "improve_layout",
                "user_layout_preference": request, "previous_quality": prior_quality,
                "constraints": {"grid": GRID, "max_delta": MAX_DELTA, "minimum_spacing": layout.get("spacing", 40),
                                "max_actions": 8, "max_group_size": 16, "max_priority_nets": 32,
                                "immutable_electrical_design": True},
-               "verified_summary": summary, "components": [], "nets": [], "obstacles": [], "diagnostics": diagnostics,
+               "verified_summary": summary, "components": [], "nets": [], "obstacles": [], "diagnostics": diagnostics[:4],
                "partial_context": {"components_omitted": len(instances), "nets_omitted": len(nets),
-                                   "obstacles_omitted": len(instances), "all_shown_net_endpoints_included": True}}
+                                   "obstacles_omitted": len(instances), "diagnostics_omitted": max(0, len(diagnostics)-4),
+                                   "all_shown_net_endpoints_included": True}}
     instruction_bytes = len(SYSTEM.encode("utf-8"))
     def fits(value):
         return instruction_bytes + len(_json(value).encode("utf-8")) <= max_bytes
     if not fits(context):
         context["verified_summary"]["ports"] = []
         context["verified_summary"]["omitted_ports"] = len(mapped["inputs"])+len(mapped["outputs"])
+        context["partial_context"]["diagnostics_omitted"] = len(diagnostics)
         context["diagnostics"] = []
         if not fits(context):
             raise ActionError("CONTEXT_LIMIT", "The verified context header does not fit this prompt budget")

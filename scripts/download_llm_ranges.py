@@ -56,6 +56,9 @@ def main():
         if temporary.resolve().parent != target.parent.resolve() or not temporary.name.startswith(".range-"):
             raise ValueError("Range staging must be an owned model-directory file")
         _no_links(temporary)
+        if state and not temporary.exists():
+            # Recorded ranges describe a published or deleted staging file; never apply them to new bytes.
+            state["complete"] = {}
         try:
             if not temporary.exists():
                 if shutil.disk_usage(target.parent).free < spec["size"] + 512 * 1024**2:
@@ -161,7 +164,10 @@ def main():
                 print("Trial complete; durable ranges retained for resumption", flush=True)
                 return
             if temporary.stat().st_size != spec["size"] or sha256(temporary) != spec["sha256"]:
-                raise ValueError("Completed ranges failed the pinned official model SHA256")
+                # Range hashes only record what was written, so no range can be trusted after this.
+                state["complete"] = {}
+                atomic_document(progress, state)
+                raise ValueError("Completed ranges failed the pinned official model SHA256; the next run downloads every range again")
             os.replace(temporary, target)
             print(f"Verified {args.model}: {spec['sha256']}", flush=True)
         finally:

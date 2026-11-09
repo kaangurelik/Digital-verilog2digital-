@@ -200,3 +200,27 @@ def test_small_model_context_contains_actionable_native_geometry(native, tmp_pat
     assert len(captured) == 1
     assert captured[0]["components"] and captured[0]["nets"]
     assert json.loads(Path(result["validation"]).read_text(encoding="utf-8"))["behavior"]["valid"]
+
+
+def test_selected_reroute_keeps_baseline_fallback_and_tunnel_decisions(baseline, tmp_path):
+    mapped, record = baseline
+    decisions = {"fallback_used": True, "fallback_reason": "Compact routing failed",
+                 "tunnels": {"mode": "long", "minimum_length": 1200, "nets": [], "skipped": [], "budget_exhausted": False}}
+    derived = {**record, "layout": {**record["layout"], **deepcopy(decisions)}}
+    with RefinementSession({"mode": "replay", "responses": [compact_response(mapped, record)], "max_attempts": 1},
+                           tmp_path / "run") as session:
+        selected = session.refine(mapped, derived)
+    assert session.report["accepted"] == 1
+    assert selected["layout"]["strategy"] == "constrained-orthogonal-v1"
+    assert {key: selected["layout"][key] for key in decisions} == decisions
+    assert session.report["canvases"][0]["baseline_strategy"] == record["layout"]["strategy"]
+
+
+def test_oversized_model_response_has_a_readable_limit_message(baseline, tmp_path):
+    mapped, record = baseline
+    with RefinementSession({"mode": "local", "max_attempts": 1}, tmp_path / "run",
+                           provider=lambda prompt, *, timeout: "x" * 65537) as session:
+        selected = session.refine(mapped, record)
+    assert selected["paths"] == record["paths"]
+    assert session.report["canvases"][0]["attempts"][0]["diagnostic"] == {
+        "code": "ValueError", "message": "Model response must be UTF-8 JSON of at most 64 KiB"}

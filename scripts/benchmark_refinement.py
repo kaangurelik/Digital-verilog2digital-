@@ -31,6 +31,7 @@ from verilog2digital.runtime import development_toolchain, require_venv
 
 
 CASES = {"full_adder": "scalar/full_adder.v", "mux8": "datapath/mux8.v", "counter": "sequential/counter.v"}
+SEQUENTIAL_CASES = {"counter"}  # Sequential plans accept at most 512 random cycles.
 MODELS = ("qwen3-4b-q4_k_m", "qwen3-4b-q5_k_m", "qwen3-14b-q4_k_m")
 POLICY = {
     "id": "connected_pin_median_v1",
@@ -366,8 +367,9 @@ def main(argv=None):
         parser.error("Development dry-run uses deterministic mode only")
     if not math.isfinite(args.budget) or not 1 <= args.budget <= 300 or not 1 <= args.attempts <= 8:
         parser.error("Refinement requires a 1..300 second budget and 1..8 attempts")
-    if not math.isfinite(args.layout_timeout) or not 0 <= args.layout_timeout <= 120 or not 0 <= args.random_count <= 1024:
-        parser.error("Layout timeout or behavior vector count is outside supported bounds")
+    vector_limit = 512 if SEQUENTIAL_CASES.intersection(args.cases) else 2048
+    if not math.isfinite(args.layout_timeout) or not 1 <= args.layout_timeout <= 120 or not 0 <= args.random_count <= vector_limit:
+        parser.error(f"Use a 1..120 second layout timeout and 0..{vector_limit} random vectors for the selected cases")
     output = args.output.resolve()
     if not output.is_relative_to(ROOT / ".runs") or not str(output).isascii():
         parser.error("Benchmark output must be an ASCII path inside this repository's .runs directory")

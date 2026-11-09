@@ -114,6 +114,19 @@ def test_profiles_fit_small_gpu_and_decline_large_when_headroom_missing():
         select_profile(resources=resources(), host_memory_bytes=2 * 1024**3)
 
 
+@pytest.mark.parametrize("settings,message", [
+    ({"context_tokens": 512}, "Explicit context must be an integer from 1024 through 8192"),
+    ({"context_tokens": True}, "Explicit context must be an integer from 1024 through 8192"),
+    ({"host_memory_bytes": 1}, "Explicit host cap must be an integer from 64 MiB through 12 GiB"),
+    ({"host_memory_bytes": 13 * 1024**3}, "Explicit host cap must be an integer from 64 MiB through 12 GiB"),
+])
+def test_selector_bounds_have_readable_messages(settings, message):
+    with pytest.raises(ModelError) as caught:
+        select_profile(resources=resources(), **settings)
+    assert caught.value.code == "MODEL_PROFILE"
+    assert caught.value.message == message
+
+
 @pytest.mark.parametrize("idle", [1, 30, 300])
 def test_selector_preserves_explicit_idle_timeout(idle):
     assert select_profile(resources=resources(), idle_seconds=idle)["idle_seconds"] == idle
@@ -314,6 +327,18 @@ def test_environment_drops_inherited_llama_and_foreign_dll_paths(monkeypatch, tm
     assert "LLAMA_ARG_HF_REPO" not in env and "GGML_RPC_SERVERS" not in env
     assert "foreign" not in env["PATH"]
     assert env["LLAMA_API_KEY"] and env["CUDA_VISIBLE_DEVICES"] == "0"
+
+
+def test_selected_gpu_index_uses_the_same_device_order_as_admission(monkeypatch, tmp_path):
+    # nvidia-smi indices follow PCI bus order; an inherited or default CUDA order could select another device.
+    monkeypatch.setenv("CUDA_DEVICE_ORDER", "FASTEST_FIRST")
+    item = profile()
+    item["gpu_index"] = 1
+    client = runtime.LocalModelRuntime(item)
+    client._artifact = {"executable": str(tmp_path / "llama-server.exe")}
+    env = client._environment(tmp_path)
+    assert env["CUDA_VISIBLE_DEVICES"] == "1"
+    assert env["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
 
 
 def test_remote_schema_does_not_get_resolved(monkeypatch):

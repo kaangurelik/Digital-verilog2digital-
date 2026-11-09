@@ -133,11 +133,14 @@ class _DeadlineAdapter:
         return self.adapter.call(method, params, **options)
 
 
-def verify_candidate(mapped: dict, layout: dict, adapter, attempt_directory: Path, *, deadline: float) -> dict:
+def verify_candidate(mapped: dict, layout: dict, adapter, attempt_directory: Path, *, deadline: float,
+                     target: Path | None = None) -> dict:
     """Emit and reload a candidate, binding validation to its exact bytes.
 
     Electrical or geometry failures return valid=False. Transport, deadline and
-    integrity errors propagate. Use an adapter owned by the refinement attempt.
+    integrity errors propagate. Use an adapter owned by the refinement attempt,
+    or a target .dig beside a package's bound dependencies. As in conversion, a
+    tunneled layout is checked against its validation_mapping.
     """
     # Import at call time: conversion also invokes the optional refinement loop.
     from ..conversion import validate_export
@@ -148,16 +151,17 @@ def verify_candidate(mapped: dict, layout: dict, adapter, attempt_directory: Pat
     validate_circuit(circuit)
     directory = Path(attempt_directory).resolve()
     directory.mkdir(parents=True, exist_ok=True)
+    output = directory / "candidate.dig" if target is None else Path(target).resolve()
+    expected_paths = {"path": output, "sidecar_path": output.with_name(output.name + ".ids.json")}
     # Existing files may only be this hierarchy attempt's bound dependencies.
-    for name in ("candidate.json", "candidate.dig", "candidate.dig.ids.json", "inspection.json", "validation.json"):
-        target = directory / name
-        if target.exists() or target.is_symlink():
+    for path in (directory / "candidate.json", *expected_paths.values(), directory / "inspection.json",
+                 directory / "validation.json"):
+        if path.exists() or path.is_symlink():
             raise LayoutError("CANDIDATE_ARTIFACT_EXISTS", "Candidate verification requires unused private artifact paths")
     _write(directory / "candidate.json", circuit)
     native = _DeadlineAdapter(adapter, deadline)
-    emitted = native.call("circuit.emit", {"circuit": circuit, "path": str(directory / "candidate.dig")})
+    emitted = native.call("circuit.emit", {"circuit": circuit, "path": str(output)})
     paths = {key: emitted[key] for key in ("path", "sidecar_path")}
-    expected_paths = {"path": directory / "candidate.dig", "sidecar_path": directory / "candidate.dig.ids.json"}
     if any(Path(paths[key]).resolve() != expected for key, expected in expected_paths.items()):
         raise LayoutError("CANDIDATE_ARTIFACT_PATH", "The optimizer adapter returned an unexpected candidate artifact path")
     hashes = {"circuit": emitted.get("sha256"), "sidecar": emitted.get("sidecar_sha256")}
@@ -169,7 +173,7 @@ def verify_candidate(mapped: dict, layout: dict, adapter, attempt_directory: Pat
             raise LayoutError("ARTIFACT_CHANGED", "An optional candidate circuit or identity sidecar changed during validation")
 
     check_hashes()
-    validation, inspection = validate_export(native, mapped, circuit, paths)
+    validation, inspection = validate_export(native, layout.get("validation_mapping", mapped), circuit, paths)
     # Custom pin order depends on serialized In/Out order as well as labels.
     order_valid = [item["id"] for item in inspection["instances"]] == [item["id"] for item in circuit["instances"]]
     validation["serialization_order"] = {"valid": order_valid, "diagnostics": [] if order_valid else [{

@@ -35,10 +35,13 @@ MESSAGES = [{"role": "system", "content": "Propose only geometry. Do not change 
 
 
 def run_profile(name, profile, *, idle=False):
-    client = LocalModelRuntime(profile)
-    row = {"name": name, "profile": deepcopy(client.profile), "valid": False}
+    row = {"name": name, "profile": deepcopy(profile), "valid": False}
     start = time.monotonic()
+    client = None
     try:
+        # Unsupported comparison variants, e.g. partial offload on a CPU profile, become recorded failures.
+        client = LocalModelRuntime(profile)
+        row["profile"] = deepcopy(client.profile)
         row["startup"] = client.start(timeout=120)
         row["responses"] = [client.generate_json(MESSAGES, SCHEMA, max_tokens=128, timeout=60, seed=1) for _ in range(2)]
         row["loaded"] = client.status()
@@ -60,8 +63,9 @@ def run_profile(name, profile, *, idle=False):
         if getattr(error, "allocation_evidence", None) is not None:
             row["allocation_evidence"] = error.allocation_evidence
     finally:
-        client.close()
-        row["closed"] = client.status()
+        if client is not None:
+            client.close()
+        row["closed"] = client.status() if client is not None else {}
         logfile = Path(row["closed"].get("log_path", ""))
         if logfile.is_file():
             lines = logfile.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -134,6 +138,12 @@ def main():
         return 1
     profile["idle_seconds"] = 2
     plans = [(args.model + f"-ctx{profile['context_tokens']}", profile, True)]
+
+    def admitted(name, model_id, **settings):
+        try:
+            return name, select_profile(model_id, report["resources_before"], **settings), False
+        except ModelError as error:
+            return name, error, False
     if args.compare:
         small = {**profile, "context_tokens": 2048, "idle_seconds": 30}
         partial = {**profile, "gpu_layers": 18, "idle_seconds": 30}
@@ -142,11 +152,17 @@ def main():
         plans += [("q4-ctx2048", small, False), ("q4-partial18", partial, False), ("q4-cpu", cpu, False),
                   ("q4-kv-f16", f16, False)]
         if not args.without_q5:
-            plans.append(("q5-ctx4096", select_profile("qwen3-4b-q5_k_m", report["resources_before"]), False))
+            plans.append(admitted("q5-ctx4096", "qwen3-4b-q5_k_m"))
     if args.large:
-        plans.append(("qwen3-14b-q4", select_profile("qwen3-14b-q4_k_m", report["resources_before"]), False))
+        # The documented 14B profile; the 4096-token, 6 GiB defaults can never admit it.
+        plans.append(admitted("qwen3-14b-q4", "qwen3-14b-q4_k_m", context_tokens=2048, host_memory_bytes=11264 * 1024**2))
     for name, selected, idle in plans:
-        report["cases"].append(run_profile(name, selected, idle=idle))
+        if isinstance(selected, ModelError):
+            report["cases"].append({"name": name, "valid": False,
+                                    "admission": {"measured_inference": False, "diagnostic": selected.as_dict()}})
+            print(json.dumps({"case": name, "valid": False, "diagnostic": selected.as_dict()}), flush=True)
+        else:
+            report["cases"].append(run_profile(name, selected, idle=idle))
         atomic_document(output / "summary.json", report)
     if args.denial:
         report["cases"].extend(denial_case({**profile, "idle_seconds": 30}))

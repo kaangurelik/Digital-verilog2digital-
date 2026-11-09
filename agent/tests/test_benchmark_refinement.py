@@ -222,3 +222,31 @@ def test_replay_looks_up_matching_model_family_path(tmp_path, monkeypatch, model
                            "--model", model, "--cases", "full_adder", "--replay-root", str(previous)]) == 0
     assert [request["strategy"] for request in requests] == ["baseline", "replay"]
     assert requests[-1]["replay_file"] == str(previous / "full_adder" / folder / "replay.json")
+
+
+@pytest.mark.parametrize("flags", [["--layout-timeout", "0"], ["--layout-timeout", "121"],
+    ["--random-count", "513"], ["--random-count", "2049", "--cases", "full_adder"], ["--random-count", "-1"]])
+def test_conversion_bounds_fail_before_output_or_worker_creation(tmp_path, monkeypatch, flags):
+    monkeypatch.setattr(benchmark, "ROOT", tmp_path)
+    monkeypatch.setattr(benchmark, "require_venv", lambda _: None)
+    monkeypatch.setattr(benchmark, "run_owned", lambda *args: pytest.fail("Unsupported conversion bounds started a worker"))
+    output = tmp_path / ".runs/invalid"
+    with pytest.raises(SystemExit) as error:
+        benchmark.main(["--output", str(output), *flags])
+    assert error.value.code == 2 and not output.exists()
+
+
+def test_combinational_cases_accept_their_larger_vector_bound(tmp_path, monkeypatch):
+    source = tmp_path / "tests/fixtures/verilog/scalar/full_adder.v"
+    source.parent.mkdir(parents=True)
+    source.write_text("module full_adder; endmodule\n", encoding="utf-8")
+    monkeypatch.setattr(benchmark, "ROOT", tmp_path)
+    monkeypatch.setattr(benchmark, "require_venv", lambda _: None)
+    monkeypatch.setattr(benchmark, "runtime_fingerprint", lambda: {"sha256": "f" * 64})
+    requests = []
+    monkeypatch.setattr(benchmark, "run_owned", lambda request, limits: requests.append(request) or {
+        "case": request["case"], "strategy": request["strategy"], "valid": True, "wall_seconds": 0,
+        "accepted_electrical_regressions": 0, "identical_baseline": True, "proposal_provider_exercised": True})
+    assert benchmark.main(["--output", str(tmp_path / ".runs/vectors"), "--cases", "full_adder",
+                           "--random-count", "2048", "--layout-timeout", "1"]) == 0
+    assert {request["options"]["random_count"] for request in requests} == {2048}

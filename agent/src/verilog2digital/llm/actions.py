@@ -4,6 +4,7 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 import json
+import unicodedata
 
 from ..contracts import ContractError, validate, validate_circuit
 from ..frontend.errors import FrontendError
@@ -122,7 +123,7 @@ def validate_actions(batch: dict, *, mapped: dict, layout: dict, expected_candid
     current = candidate_id(mapped, layout)
     if batch["candidate_id"] != current or (expected_candidate_id is not None and expected_candidate_id != current):
         raise ActionError("ACTION_STALE", "The proposal refers to a different layout candidate")
-    if any(ord(char) < 32 and char not in "\n\t" for char in batch["explanation"]):
+    if any(unicodedata.category(char) == "Cc" and char not in "\n\t" for char in batch["explanation"]):
         raise ActionError("ACTION_SCHEMA", "Proposal explanations cannot contain control characters")
     positions = {item["id"]: item["position"] for item in layout["circuit"]["instances"]}
     nets = {item["id"] for item in mapped["nets"]}

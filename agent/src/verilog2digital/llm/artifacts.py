@@ -61,7 +61,7 @@ def _regular(path, root):
         if item.is_symlink() or (hasattr(item, "is_junction") and item.is_junction()):
             raise ModelError("MODEL_PATH", "Artifact paths cannot contain links or junctions")
     if not path.is_file():
-        raise ModelError("MODEL_UNAVAILABLE", f"Pinned local artifact is missing: {path.name}; run scripts/provision_llm.py")
+        raise ModelError("MODEL_UNAVAILABLE", f"Pinned local artifact is missing: {path.name}; install it with the desktop Install button or v2d models install")
     return path
 
 

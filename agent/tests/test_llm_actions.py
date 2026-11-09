@@ -294,3 +294,34 @@ def test_native_metric_shape_and_feedback_share_the_whole_prompt_budget(case):
     assert result["context"]["diagnostics"] == [{"code": "route_failed", "message": "Unroutable boundary pin"}]
     assert result["context"]["previous_quality"][0]["deltas_candidate_minus_incumbent"] == {"wire_length": -10, "crossings": 1}
     assert sum(len(message["content"].encode("utf-8")) for message in result["messages"]) == result["metadata"]["content_bytes"] <= 7000
+
+
+def test_quality_only_feedback_adds_no_empty_prompt_diagnostic(case):
+    mapped, layout = case
+    feedback = [{"quality": {"improved": False, "relation": "equal", "deltas": {"wire_length": 0}}},
+                {"diagnostic": {"code": "ACTION_STALE", "message": "Stale proposal"}}]
+    result = build_context(mapped, layout, feedback=feedback)
+    assert result["context"]["diagnostics"] == [{"code": "ACTION_STALE", "message": "Stale proposal"}]
+    assert result["context"]["previous_quality"] == [{"improved": False, "relation": "equal",
+                                                      "deltas_candidate_minus_incumbent": {"wire_length": 0}}]
+    assert result["context"]["partial_context"]["diagnostics_omitted"] == 0
+
+
+def test_prompt_counts_omitted_diagnostics(case):
+    mapped, layout = case
+    validation = {"valid": False, "diagnostics": [{"code": f"d{index}", "message": "detail"} for index in range(6)]}
+    result = build_context(mapped, layout, validation=validation)
+    assert [item["code"] for item in result["context"]["diagnostics"]] == ["d0", "d1", "d2", "d3"]
+    assert result["metadata"]["truncation"]["diagnostics_omitted"] == 2
+
+
+@pytest.mark.parametrize("character", ["\x00", "\r", "\x7f", "\x85", "\x9b"])
+def test_explanations_reject_c0_delete_and_c1_controls(case, character):
+    mapped, layout = case
+    proposal = batch(mapped, layout)
+    proposal["explanation"] = "Move closer" + character
+    with pytest.raises(ActionError) as error:
+        validate_actions(proposal, mapped=mapped, layout=layout)
+    assert error.value.code == "ACTION_SCHEMA"
+    proposal["explanation"] = "Line one\n\tLine two"
+    validate_actions(proposal, mapped=mapped, layout=layout)

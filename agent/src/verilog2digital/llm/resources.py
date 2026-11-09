@@ -94,9 +94,9 @@ def select_profile(model_id="qwen3-4b-q4_k_m", resources=None, *, context_tokens
     host = resources["host"]
     # Admission estimates do not reserve memory.
     if context_tokens is not None and (type(context_tokens) is not int or not 1024 <= context_tokens <= 8192):
-        raise ModelError("MODEL_PROFILE", "Explicit context must be an integer from1024 through8192")
+        raise ModelError("MODEL_PROFILE", "Explicit context must be an integer from 1024 through 8192")
     if type(host_memory_bytes) is not int or not 64 * MIB <= host_memory_bytes <= 12 * GIB:
-        raise ModelError("MODEL_PROFILE", "Explicit host cap must be from64MiB through12GiB")
+        raise ModelError("MODEL_PROFILE", "Explicit host cap must be an integer from 64 MiB through 12 GiB")
     if type(idle_seconds) is not int or not 1 <= idle_seconds <= 300:
         raise ModelError("MODEL_PROFILE", "Idle timeout must be an integer from 1 through 300 seconds")
     context = context_tokens or 4096

@@ -206,6 +206,9 @@ class LocalModelRuntime:
         env["TEMP"] = env["TMP"] = str(directory)
         env["LLAMA_API_KEY"] = self._token
         env["CUDA_VISIBLE_DEVICES"] = str(self.profile["gpu_index"]) if self.profile["backend"] == "cuda" else "-1"
+        # Admission and sampling use nvidia-smi indices, which follow PCI bus order;
+        # CUDA would otherwise number devices fastest first.
+        env["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
         return env
 
     def _admit(self, resources):
