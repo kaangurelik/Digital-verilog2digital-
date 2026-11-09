@@ -168,7 +168,7 @@ void MainFrame::BuildInterface() {
     }); project->GetSizer()->Add(traceButtons, 0, wxALL, FromDIP(10));
     auto* layout = page("Layout");
     layout_ = choice(layout, "Placement and routing", {"Compact (automatic)", "Reserved spacing"});
-    spacing_ = spin(layout, "Extra spacing (grid units)", 40, 400, 80); spacing_->SetIncrement(20);
+    spacing_ = spin(layout, "Extra spacing (grid units)", 40, 400, 40); spacing_->SetIncrement(20);
     profile_ = choice(layout, "Supported circuit profile", {"Automatic", "Scalar gates", "Readable datapath blocks", "Sequential registers"});
     flatten_ = check(layout, "Flatten hierarchy"); tunnels_ = check(layout, "Allow named tunnels");
     useModel_ = check(layout, "Enable optional local model refinement");
@@ -194,7 +194,7 @@ void MainFrame::BuildInterface() {
     memory_ = spin(resources, "Whole job memory ceiling (MiB)", 256, 65536, 6144);
     javaHeap_ = spin(resources, "Java heap ceiling (MiB)", 64, 16384, 1024);
     vectors_ = spin(resources, "Random validation vectors", 0, 2048, 256);
-    seed_ = spin(resources, "Validation seed", -2147483647 - 1, 2147483647, 1);
+    seed_ = spin(resources, "Validation seed", -2147483647 - 1, 2147483647, 0);
     auto* tools = new wxBoxSizer(wxHORIZONTAL); button(resources, tools, "Check tools and memory", IdDoctor, [this](wxCommandEvent&) { Begin(Action::Doctor, {L"doctor"}); });
     resources->GetSizer()->Add(tools, 0, wxALL, FromDIP(10));
 
@@ -323,10 +323,11 @@ void MainFrame::ApplyProject(const json& value) {
         if (modelIndex == 3 || profileIndex == 4) throw std::runtime_error("Unknown model or circuit profile");
         struct Setting { wxSpinCtrl* control; int value; };
         if (conversion.contains("seed") && (conversion["seed"].get<double>() < -2147483648.0 || conversion["seed"].get<double>() > 2147483647.0)) throw std::runtime_error("The desktop seed control supports signed 32-bit integers");
-        std::vector<Setting> settings{{spacing_, conversion.value("spacing", 80)}, {attempts_, refinement.value("max_attempts", 3)},
+        // Omitted settings take the CLI defaults so a project converts alike in both clients.
+        std::vector<Setting> settings{{spacing_, conversion.value("spacing", 40)}, {attempts_, refinement.value("max_attempts", 3)},
             {context_, refinement.contains("context_tokens") && !refinement["context_tokens"].is_null() ? refinement["context_tokens"].get<int>() : 0},
             {modelMemory_, refinement.value("model_memory_mib", 6144)}, {idle_, refinement.value("idle_seconds", 30)},
-            {memory_, resources.value("memory_mib", 6144)}, {javaHeap_, resources.value("java_heap_mib", 1024)}, {vectors_, conversion.value("random_count", 256)}, {seed_, conversion.value("seed", 1)}};
+            {memory_, resources.value("memory_mib", 6144)}, {javaHeap_, resources.value("java_heap_mib", 1024)}, {vectors_, conversion.value("random_count", 256)}, {seed_, conversion.value("seed", 0)}};
         for (const auto& setting : settings) if (setting.value < setting.control->GetMin() || setting.value > setting.control->GetMax()) throw std::runtime_error("Saved project has an out-of-range setting");
         const double budget = refinement.value("budget_seconds", 120.0), deadline = resources.value("deadline_seconds", 300.0);
         if (!std::isfinite(budget) || budget < 1 || budget > 300 || !std::isfinite(deadline) || deadline < 1 || deadline > 3600) throw std::runtime_error("Saved project has an out-of-range time budget");
@@ -422,9 +423,11 @@ void MainFrame::Completed(const WorkerUpdate& update) {
         else if (action == Action::Inspect) {
             const auto& inspection = result.at("inspection"); auto previous = top_->GetValue(); loading_ = true;
             top_->Clear(); for (const auto& candidate : inspection.at("top_candidates")) top_->Append(Wide(candidate.get<std::string>()));
+            bool discovered = false;
             if (!previous.empty()) top_->SetValue(previous);
-            else if (top_->GetCount() == 1) { top_->SetSelection(0); dirty_ = true; }
+            else if (top_->GetCount() == 1) { top_->SetSelection(0); discovered = true; }
             loading_ = false;
+            if (discovered) Changed();  // Marks the unsaved top in the title as well.
             wxString report = "Source inspection passed.\nAvailable top modules:\n";
             for (const auto& candidate : inspection.at("top_candidates")) report += "  " + Wide(candidate.get<std::string>()) + "\n";
             for (const auto& item : inspection.value("diagnostics", json::array())) report += Message(item) + "\n";

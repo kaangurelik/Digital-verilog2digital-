@@ -209,6 +209,23 @@ int main(int argc, char** argv) {
         Check(panel->LoadResult(unicode.directory, unicode.manifest, unicode.metadata, &error), "Unicode result path/label: " + error.ToStdString());
         Check(panel->HitTest(Pixel(*panel, 60, 110)) == "g0000", "Unicode metadata preserves IDs");
 
+        // The schema and Python validator accept 16384-character names and +/-2e6 coordinates.
+        Fixture bounded(root, "schema-bounds");
+        for (const auto* name : {"selected", "baseline"}) {
+            auto& item = bounded.metadata["views"][name]["instances"][0];
+            item["type"] = std::string(300, 'T'); item["label"] = std::string(1100, 'L') + u8"_\u03bc";
+            item["pins"][0]["pin"] = std::string(300, 'p');
+        }
+        auto& distant = bounded.metadata["views"]["selected"];
+        auto shift = [](Json& point) { point["x"] = point["x"].get<int>() + 1500000; };
+        shift(distant["instances"][0]["position"]);
+        for (const auto* key : {"bounds", "body_bounds"}) { shift(distant["instances"][0][key]["min"]); shift(distant["instances"][0][key]["max"]); }
+        for (auto& pin : distant["instances"][0]["pins"]) shift(pin["position"]);
+        distant["circuit_to_pixel"]["ty"] = 50.0 - 3000000.0;
+        bounded.Publish();
+        Check(panel->LoadResult(bounded.directory, bounded.manifest, bounded.metadata, &error), "schema-valid long names and far coordinates: " + error.ToStdString());
+        Check(panel->HitTest(Pixel(*panel, 60, 110)) == "g0000", "far native coordinates keep hit testing");
+
         auto reject = [&](const std::string& name, auto mutate) {
             Fixture bad(root, name);
             mutate(bad);
@@ -231,6 +248,11 @@ int main(int argc, char** argv) {
             f.metadata["views"]["selected"]["image"]["sha256"] = f.manifest["artifacts"]["preview"]["sha256"]; f.Publish();
         });
         reject("uint64-coordinate", [](Fixture& f) { f.metadata["views"]["selected"]["instances"][0]["position"]["x"] = std::numeric_limits<std::uint64_t>::max(); f.Publish(); });
+        reject("coordinate-range", [](Fixture& f) { f.metadata["views"]["selected"]["instances"][0]["position"]["x"] = 2000001; f.Publish(); });
+        reject("overlong-label", [](Fixture& f) {
+            for (const auto* name : {"selected", "baseline"}) f.metadata["views"][name]["instances"][0]["label"] = std::string(16385, 'L');
+            f.Publish();
+        });
 
         Check(panel->LoadResult(good.directory, good.manifest, good.metadata), "reload after failures");
         panel->SelectAt(Pixel(*panel, 60, 110));

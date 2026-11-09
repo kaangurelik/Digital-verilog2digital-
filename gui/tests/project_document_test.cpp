@@ -27,6 +27,10 @@ template<typename F> void Reject(F operation, const std::string& message) {
     try { operation(); } catch (const std::exception&) { rejected = true; }
     Check(rejected, message);
 }
+template<typename F> std::string Failure(F operation) {
+    try { operation(); } catch (const std::exception& error) { return error.what(); }
+    return {};
+}
 
 int main(int argc, char** argv) {
     try {
@@ -105,6 +109,24 @@ int main(int argc, char** argv) {
             Bytes(bad, invalid[index].dump());
             Reject([&] { v2d::LoadProject(bad); }, "invalid field/type accepted at index" + std::to_string(index));
         }
+        auto messages = [&](const std::string& key, const Json& value, const std::string& expected) {
+            auto test = project; test[key] = value;
+            auto bad = root / ("message-" + std::to_string(invalid.size()) + "-" + key + ".json");
+            Bytes(bad, test.dump()); invalid.push_back(test);
+            auto text = Failure([&] { v2d::LoadProject(bad); });
+            Check(text.find(expected) != std::string::npos, "unclear diagnostic: " + text);
+        };
+        messages("conversion", {{"spacing", 50}}, "multiple of 20");
+        messages("defines", {{"SYNTHESIS", "0"}}, "SYNTHESIS as 1");
+        messages("sources", {u8"../hdl/\u6e2c\u8a66.v", 7}, "Project paths must be strings");
+        messages("output", 7, "Project paths must be strings");
+        messages("include_dirs", {"../headers with spaces", "../headers with spaces"}, "Duplicate project path");
+        messages("sources", {u8"../hdl/\u6e2c\u8a66.v", u8"./../hdl/\u6e2c\u8a66.v"}, "only once");
+        // The CLI accepts include folders that resolve alike when written differently.
+        auto aliases = project; aliases["include_dirs"] = {"../headers with spaces", "./../headers with spaces"};
+        auto aliased = root / "include-aliases.json";
+        Bytes(aliased, aliases.dump());
+        Check(v2d::LoadProject(aliased)["include_dirs"].size() == 2, "equivalent include spellings were rejected");
         auto malformed = root / "malformed.json";
         Bytes(malformed, R"({"schema_version":1,"sources":["a.v"],"top":"a","top":"b"})");
         Reject([&] { v2d::LoadProject(malformed); }, "duplicate JSON key accepted");

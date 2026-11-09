@@ -150,7 +150,7 @@ void Conversion(const Json& value) {
     Fields(value, {"spacing", "profile", "flatten", "tunnels", "refinement", "layout_strategy", "layout_timeout", "seed", "random_count"}, "Unknown or malformed conversion setting");
     if (value.contains("spacing")) {
         Integer(value["spacing"], 40, 400, "Invalid component spacing");
-        Require(value["spacing"].get<int>() % 20 == 0, "Component spacing must be a multiple of20");
+        Require(value["spacing"].get<int>() % 20 == 0, "Component spacing must be a multiple of 20");
     }
     if (value.contains("profile")) Choice(value["profile"], {"auto", "scalar-v1", "datapath-v1", "sequential-v1"}, "Invalid circuit profile");
     for (const auto* key : {"flatten", "tunnels"}) if (value.contains(key)) Require(value[key].is_boolean(), "Hierarchy and tunnel settings must be boolean");
@@ -186,13 +186,22 @@ nlohmann::json LoadProject(const std::filesystem::path& file) {
     for (const auto& item : value.items()) if (!fields.count(item.key())) throw std::runtime_error("Unknown project field: " + item.key());
     for (const auto* key : {"sources", "include_dirs"}) if (value.contains(key)) {
         if (!value[key].is_array() || value[key].size() > 64) throw std::runtime_error("Invalid project path list");
+        // Like the CLI: sources are unique after resolution; include entries only as written.
+        const bool sources = std::string(key) == "sources";
+        std::set<std::string> written;
         std::set<std::wstring, WindowsPathLess> seen;
         for (auto& name : value[key]) {
+            Require(name.is_string(), "Project paths must be strings");
+            if (!written.insert(name.get<std::string>()).second) throw std::runtime_error("Duplicate project path");
             name = Resolved(name.get<std::string>(), file.parent_path());
-            if (!seen.insert(std::filesystem::u8path(name.get<std::string>()).wstring()).second) throw std::runtime_error("Duplicate project path");
+            if (sources && !seen.insert(std::filesystem::u8path(name.get<std::string>()).wstring()).second)
+                throw std::runtime_error("Each source file must appear only once");
         }
     }
-    for (const auto* key : {"output", "trace"}) if (value.contains(key)) value[key] = Resolved(value[key].get<std::string>(), file.parent_path());
+    for (const auto* key : {"output", "trace"}) if (value.contains(key)) {
+        Require(value[key].is_string(), "Project paths must be strings");
+        value[key] = Resolved(value[key].get<std::string>(), file.parent_path());
+    }
     if (value.contains("top")) {
         Text(value["top"], 256, "Invalid top-module name");
         Require(Identifier(value["top"].get<std::string>()), "Top module must be an ordinary Verilog identifier");
@@ -207,7 +216,7 @@ nlohmann::json LoadProject(const std::filesystem::path& file) {
             if (define) {
                 const auto text = item.value().get<std::string>();
                 Require(text.find_first_of(std::string("\0\r\n", 3)) == std::string::npos, "Macro values must fit on one line");
-                Require((item.key() != "YOSYS" && item.key() != "SYNTHESIS") || text == "1", "The synthesis profile reserves YOSYS and SYNTHESIS as1");
+                Require((item.key() != "YOSYS" && item.key() != "SYNTHESIS") || text == "1", "The synthesis profile reserves YOSYS and SYNTHESIS as 1");
             }
         }
     }

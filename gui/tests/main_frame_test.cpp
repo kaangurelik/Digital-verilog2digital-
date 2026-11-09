@@ -272,11 +272,31 @@ int main(int argc, char** argv) {
     fs::path directory;
     try {
         const bool digitalOnly = wideArgs.size() == 4 && wideArgs[2] == L"--open-digital-only";
-        Require(wideArgs.size() == 2 || digitalOnly, "Usage: v2d-main-frame-tests <repository-root> [--open-digital-only <manifest>]");
+        const bool defaultsOnly = wideArgs.size() == 3 && wideArgs[2] == L"--project-defaults-only";
+        Require(wideArgs.size() == 2 || digitalOnly || defaultsOnly,
+            "Usage: v2d-main-frame-tests <repository-root> [--open-digital-only <manifest> | --project-defaults-only]");
         const auto repository = fs::absolute(wideArgs[1]);
         directory = repository / L".runs/gui-main-frame-native" / (std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64())) / L"hdl_\u0131\u015f\u0131k_\u03c0";
         fs::create_directories(directory);
-        if (digitalOnly) {
+        if (defaultsOnly) {
+            // Omitted conversion settings mean the CLI defaults; saving must not change them.
+            const auto source = directory / L"defaults.v", project = directory / L"defaults.v2d.json", fresh = directory / L"new.v2d.json";
+            Write(source, "module defaults(input a, output y); assign y = a; endmodule\n");
+            v2d::WriteJson(project, {{"schema_version", 1}, {"sources", {"defaults.v"}}}, false);
+            frame = new MainFrame(repository); wxTheApp->SetTopWindow(frame); Dialogs dialogs;
+            frame->OpenProject(project); Menu(*frame, wxID_SAVE); dialogs.Check();
+            auto saved = v2d::ReadJson(project);
+            Require(saved.at("conversion").at("spacing") == 40 && saved.at("conversion").at("seed") == 0
+                && saved.at("conversion").at("random_count") == 256 && saved.at("conversion").at("layout_strategy") == "auto",
+                "Opening and saving a project changed omitted CLI defaults: " + saved.at("conversion").dump());
+            Menu(*frame, wxID_NEW); frame->AddSources({v2d::Display(source)});
+            dialogs.Select(fresh); Menu(*frame, wxID_SAVE); dialogs.Check();
+            saved = v2d::ReadJson(fresh);
+            Require(saved.at("conversion").at("spacing") == 40 && saved.at("conversion").at("seed") == 0,
+                "A new desktop project does not start from the CLI defaults: " + saved.at("conversion").dump());
+            evidence["operations"].push_back({{"name", "project_defaults_match_cli"}, {"valid", true}});
+            evidence["valid"] = true;
+        } else if (digitalOnly) {
             frame = new MainFrame(repository); wxTheApp->SetTopWindow(frame); Dialogs dialogs;
             dialogs.Select(fs::path(wideArgs[3])); Menu(*frame, MenuId(*frame, "File", "Reopen circuit package...")); dialogs.Check();
             Wait(*frame, "reopen for Digital launch"); Ready(*frame, "reopen for Digital launch");

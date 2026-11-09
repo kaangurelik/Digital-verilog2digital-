@@ -102,6 +102,22 @@ std::filesystem::path Absolute(const std::filesystem::path& path) {
     return result;
 }
 
+// The CLI reports Path.resolve() results; compare junctions, substituted and
+// mapped drives and short names in that final form.
+std::filesystem::path Final(const std::filesystem::path& value) {
+    const auto path = Absolute(value);
+    Handle handle(CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                              OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr));
+    if (!handle) return path;
+    std::vector<wchar_t> buffer(32768);
+    const auto count = GetFinalPathNameByHandleW(handle.get(), buffer.data(), static_cast<DWORD>(buffer.size()), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    if (!count || count >= buffer.size()) return path;
+    std::wstring text(buffer.data(), count);
+    if (text.rfind(L"\\\\?\\UNC\\", 0) == 0) text = L"\\\\" + text.substr(8);
+    else if (text.rfind(L"\\\\?\\", 0) == 0) text = text.substr(4);
+    return Absolute(text);
+}
+
 std::vector<wchar_t> Environment(const std::filesystem::path& root, const std::filesystem::path& jobs) {
     std::map<std::wstring, std::wstring> values;
     LPWCH inherited = GetEnvironmentStringsW();
@@ -310,6 +326,12 @@ struct WorkerBridge::Impl {
         std::shared_ptr<Run> run;
         void Publish(WorkerUpdate update, const std::shared_ptr<Run>& owner) {
             std::lock_guard<std::mutex> lock(mutex);
+            if (update.kind == WorkerUpdate::Kind::Completed) {
+                // Running() never reports completion before its update is stored, and a
+                // Shutdown waiter holding done_mutex cannot miss the following notification.
+                std::lock_guard<std::mutex> finished(owner->done_mutex);
+                owner->done = true;
+            }
             if (closing || run != owner) return;
             if (update.kind == WorkerUpdate::Kind::Progress) {
                 if (progress) ++owner->coalesced;
@@ -355,7 +377,8 @@ struct WorkerBridge::Impl {
             if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos || (!job_id.empty() && job_id != id))
                 throw Failure("BRIDGE_PROTOCOL", "CLI job identity changed or is invalid");
             auto expected = Absolute(run->jobs / Wide(id) / L"job.json");
-            if (Lower(supplied_manifest.native()) != Lower(expected.native()))
+            if (Lower(supplied_manifest.native()) != Lower(expected.native())
+                && Lower(Final(supplied_manifest).native()) != Lower(Final(expected).native()))
                 throw Failure("BRIDGE_PROTOCOL", "CLI job manifest is outside its bound job directory");
             job_id = id; manifest = expected;
         };
@@ -459,8 +482,7 @@ struct WorkerBridge::Impl {
         }
         final.cancellation_requested = run->cancel;
         final.coalesced_progress = run->coalesced;
-        run->done = true;
-        state->Publish(std::move(final), run);
+        state->Publish(std::move(final), run);  // Also marks the run done.
         run->finished.notify_all();
     }
 };

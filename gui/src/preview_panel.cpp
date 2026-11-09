@@ -113,10 +113,12 @@ Json Parse(const Bytes& bytes) {
     });
 }
 
-std::string String(const Json& value, std::size_t limit = 1024) {
+// Limits count Unicode characters, matching the preview-metadata schema.
+std::string String(const Json& value, std::size_t limit = 16384) {
     Require(value.is_string(), "Preview metadata requires a string");
     auto text = value.get<std::string>();
-    Require(text.size() <= limit && text.find('\0') == std::string::npos, "Preview metadata string is invalid or too long");
+    const auto characters = static_cast<std::size_t>(std::count_if(text.begin(), text.end(), [](unsigned char c) { return (c & 0xc0) != 0x80; }));
+    Require(characters <= limit && text.find('\0') == std::string::npos, "Preview metadata string is invalid or too long");
     return text;
 }
 
@@ -140,7 +142,7 @@ Bytes ReadBound(const std::filesystem::path& directory, const Json& artifact, st
     return bytes;
 }
 
-double Number(const Json& value, double limit = 1000000) {
+double Number(const Json& value, double limit = 16000000) {
     Require(value.is_number(), "Preview geometry requires a number");
     double number = value.get<double>();
     Require(std::isfinite(number) && std::abs(number) <= limit, "Preview geometry is nonfinite or outside its bounds");
@@ -157,8 +159,8 @@ int Integer(const Json& value, int low, int high) {
 }
 
 wxPoint2DDouble Point(const Json& value) {
-    return {static_cast<double>(Integer(value.at("x"), -1000000, 1000000)),
-            static_cast<double>(Integer(value.at("y"), -1000000, 1000000))};
+    return {static_cast<double>(Integer(value.at("x"), -2000000, 2000000)),
+            static_cast<double>(Integer(value.at("y"), -2000000, 2000000))};
 }
 
 struct Bounds {
@@ -269,7 +271,7 @@ View ReadView(const Json& value, const Json& manifest, bool baseline) {
         Instance instance;
         instance.id = String(item.at("id"), 128);
         Require(!instance.id.empty() && ids.insert(instance.id).second, "Preview component IDs must be unique");
-        instance.type = String(item.at("type"), 256);
+        instance.type = String(item.at("type"));
         instance.label = String(item.at("label"));
         Point(item.at("position"));
         const auto rotation = Integer(item.at("rotation"), 0, 270);
@@ -281,7 +283,7 @@ View ReadView(const Json& value, const Json& manifest, bool baseline) {
         for (const auto& pin : pins) {
             const auto direction = String(pin.at("direction"));
             Require(direction == "input" || direction == "output" || direction == "both", "Preview pin direction is invalid");
-            String(pin.at("pin"), 256);
+            String(pin.at("pin"));
             if (!pin.at("width").is_null()) Integer(pin.at("width"), 1, 64);
             instance.pins.push_back(Point(pin.at("position")));
         }

@@ -58,7 +58,7 @@ def _summary(manifest, report, validation):
         "recorded_behavior": report.get("behavior"),
         "layout_metrics": layout.get("metrics", {}),
         "refinement": {**{key: refinement[key] for key in (
-            "mode", "state", "accepted", "duration_seconds") if key in refinement},
+            "mode", "accepted", "session_seconds") if key in refinement},
             "attempted": attempted, "diagnostics": diagnostics},
     }
 

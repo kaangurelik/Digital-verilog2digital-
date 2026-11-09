@@ -235,3 +235,30 @@ def test_desktop_cli_returns_checked_result_envelope_without_inference(result, t
         arguments += ["-o", str(tmp_path / "cli-export")]
     assert cli.main(arguments) == 0
     assert json.loads(capsys.readouterr().out)["state"] == "ready"
+
+
+def test_gui_check_records_a_hung_native_check_as_invalid_evidence(tmp_path, monkeypatch, capsys):
+    import importlib.util
+    import json
+    import sys
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.syspath_prepend(str(root / "scripts"))
+    spec = importlib.util.spec_from_file_location("check_gui_timeout_probe", root / "scripts/check_gui.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+    monkeypatch.setattr(module, "environment", lambda program: {})
+    monkeypatch.setattr(sys, "prefix", str(tmp_path / ".venv"))
+    monkeypatch.setattr(sys, "argv", ["check_gui.py"])
+    calls = []
+    def run(command, **kwargs):
+        calls.append(command)
+        if len(calls) == 2:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        return SimpleNamespace(returncode=0)
+    monkeypatch.setattr(module.subprocess, "run", run)
+    assert module.main() == 1
+    summary = json.loads(next(tmp_path.glob(".runs/gui-checks/*/summary.json")).read_text(encoding="utf-8"))
+    assert len(calls) == 2 and summary["valid"] is False
+    assert summary["checks"][-1]["timed_out"] is True and summary["checks"][-1]["exit_code"] is None
+    assert "timed out" in capsys.readouterr().out

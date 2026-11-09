@@ -3,6 +3,7 @@
 #include <wx/app.h>
 #include <windows.h>
 #include <shellapi.h>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -151,6 +152,17 @@ int main() {
             auto result = Completion(bridge);
             Require(slow.wakes <= 1 && result.coalesced_progress > 1000 && result.diagnostic_code.empty(), "Progress flooded the event queue"); ++checks;
         }
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            // No pump or sleep: completion and its stored update become visible together.
+            WorkerBridge bridge(target, root, options);
+            bridge.Start({L"doctor", L"--fixture", L"echo"});
+            const auto deadline = std::chrono::steady_clock::now() + 12s;
+            while (bridge.Running() && std::chrono::steady_clock::now() < deadline) std::this_thread::yield();
+            auto events = bridge.DrainEvents();
+            Require(!bridge.Running() && std::any_of(events.begin(), events.end(), [](const WorkerUpdate& item) {
+                return item.kind == WorkerUpdate::Kind::Completed && item.diagnostic_code.empty(); }), "Completion was visible before its update");
+            if (attempt == 7) ++checks;
+        }
         {
             WorkerBridge bridge(target, root, options);
             auto old = bridge.Start({L"doctor", L"--fixture", L"echo"}); Wait(bridge);
@@ -182,6 +194,24 @@ int main() {
             auto result = Completion(bridge);
             Require(result.diagnostic_code.empty() && result.exit_code == 0 && result.remaining_processes == 0,
                 "Desktop terminal manifest without redundant job ID was rejected"); ++checks;
+        }
+        {
+            // A job root reached through a junction (or substituted/mapped drive) is reported resolved.
+            const auto resolved = base / L"resolved-jobs", alias = base / L"jobs-alias";
+            fs::create_directories(resolved);
+            wchar_t system[MAX_PATH]; Require(GetSystemDirectoryW(system, MAX_PATH) != 0, "Cannot locate cmd.exe");
+            std::wstring command = L"\"" + (fs::path(system) / L"cmd.exe").native() + L"\" /d /s /c \"mklink /J \"" + alias.native() + L"\" \"" + resolved.native() + L"\"\"";
+            STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION info{};
+            Require(CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &startup, &info) != 0, "Cannot start junction fixture");
+            WaitForSingleObject(info.hProcess, 10000); CloseHandle(info.hThread); CloseHandle(info.hProcess);
+            Require(fs::is_directory(alias), "Cannot create the junction fixture");
+            struct RemoveJunction { fs::path path; ~RemoveJunction() { RemoveDirectoryW(path.c_str()); } } cleanup{alias};
+            auto aliased = options; aliased.job_root = alias;
+            WorkerBridge bridge(target, root, aliased);
+            bridge.Start({L"desktop", L"result", L"--fixture", L"resolved-final"});
+            auto result = Completion(bridge);
+            Require(result.diagnostic_code.empty() && result.exit_code == 0 && result.remaining_processes == 0,
+                (std::string("Resolved job manifest under an aliased job root was rejected: ") + result.diagnostic_message).c_str()); ++checks;
         }
         {
             auto limits = options; limits.command_timeout = 250ms;

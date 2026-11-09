@@ -36,10 +36,12 @@ elif mode == "flood":
     for index in range(6000):
         emit("progress", {"stage": "routing", "index": index})
     emit("result", {"state": "ready"})
-elif mode in {"late-job", "desktop-final"}:
+elif mode in {"late-job", "desktop-final", "resolved-final"}:
     time.sleep(.35)
     identifier = "f" * 32
-    directory = Path(os.environ["V2D_JOB_ROOT"]) / identifier
+    # Like the job manager, resolved-final reports the job root by its resolved path.
+    jobs = Path(os.environ["V2D_JOB_ROOT"])
+    directory = (jobs.resolve() if mode == "resolved-final" else jobs) / identifier
     directory.mkdir(parents=True, exist_ok=True)
     marker = directory / "cancel.json"
     marker.unlink(missing_ok=True)
@@ -47,7 +49,7 @@ elif mode in {"late-job", "desktop-final"}:
     manifest.write_text("{}", encoding="utf-8")
     emit("progress", {"stage": "inspecting", "state": "running", "sequence": 0,
                       "job_id": identifier, "job_manifest": str(manifest)})
-    if mode == "desktop-final":
+    if mode in {"desktop-final", "resolved-final"}:
         emit("result", {"state": "ready", "job_manifest": str(manifest)})
         raise SystemExit(0)
     while not marker.exists():
