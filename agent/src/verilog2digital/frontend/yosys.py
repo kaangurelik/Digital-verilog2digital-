@@ -10,7 +10,7 @@ import subprocess
 
 from ..runtime import development_toolchain, repository_root
 from ..ir import Design, SUPPORTED_CELLS, validate_design
-from .errors import FrontendError
+from .errors import FrontendError, source_location
 from .inspection import inspect_sources
 from .project import Project
 
@@ -47,33 +47,56 @@ def _command(*words: str) -> str:
 
 
 def _parameter(value: str | int) -> str:
+    """Return one top override in a form slang, Yosys and Icarus read alike.
+
+    Yosys -chparam cannot decode signed decimals and drops the signedness of
+    sized 's' literals, so those forms are rejected instead of mis-lowered.
+    """
     value = str(value).strip()
     if re.fullmatch(r"[+-]?[0-9][0-9_]*", value):
-        if not -(1 << 63) <= int(value.replace("_", "")) < (1 << 64):
-            raise FrontendError("PARAMETER_LIMIT", "Integer parameter override exceeds 64 bits")
-        return value.replace("_", "")
-    literal = re.fullmatch(r"([0-9]+)'([sS]?)([bBoOdDhH])([0-9a-fA-F_]+)", value)
+        number = int(value.replace("_", ""))
+        if number < 0:
+            raise FrontendError("INVALID_PARAMETER", f"Negative parameter override {value} cannot be lowered by the HDL backend; "
+                                "pass the two's-complement pattern as an unsigned sized literal to a parameter declared signed")
+        if number > 2147483647:
+            raise FrontendError("PARAMETER_LIMIT", "Decimal parameter overrides are 32-bit integers from 0 through 2147483647; use a sized literal for wider values")
+        return str(number)
+    literal = re.fullmatch(r"([0-9]+)'([sS]?)([bBoOdDhH])([0-9a-fA-F][0-9a-fA-F_]*)", value)
     if literal:
         width, signed, base, digits = literal.groups()
         if not 1 <= int(width) <= 64:
             raise FrontendError("PARAMETER_LIMIT", "Parameter literal width must be between 1 and 64")
+        if signed:
+            raise FrontendError("INVALID_PARAMETER", f"Signed parameter literal {value} would lose its signedness in the HDL backend; "
+                                "pass an unsigned sized literal and declare the parameter signed where needed")
         try:
             int(digits.replace("_", ""), {"b": 2, "o": 8, "d": 10, "h": 16}[base.lower()])
         except ValueError as error:
             raise FrontendError("INVALID_PARAMETER", f"Invalid parameter literal: {value}") from error
         return value
-    raise FrontendError("INVALID_PARAMETER", "Parameter overrides must be decimal integers or sized binary/octal/decimal/hex literals")
+    raise FrontendError("INVALID_PARAMETER", "Parameter overrides must be nonnegative decimal integers or unsigned sized binary/octal/decimal/hex literals")
 
 
-def _bits(bits: list, label: str, *, width_limit: int = 64) -> list:
+def _bits(bits: list, label: str, *, width_limit: int = 64, source: str = "") -> list:
     if not 1 <= len(bits) <= width_limit:
-        raise FrontendError("UNSUPPORTED_WIDTH", f"{label} has width {len(bits)}; supported widths are 1 through {width_limit}")
+        raise FrontendError("UNSUPPORTED_WIDTH", f"{label} has width {len(bits)}; supported widths are 1 through {width_limit}",
+                            **source_location(source))
     for bit in bits:
         if type(bit) is int and bit >= 2:
             continue
         if bit not in ("0", "1"):
-            raise FrontendError("UNSUPPORTED_FOUR_STATE", f"{label} contains an unresolved or unknown bit: {bit!r}")
+            raise FrontendError("UNSUPPORTED_FOUR_STATE", f"{label} contains an unresolved or unknown bit: {bit!r}",
+                                **source_location(source))
     return list(bits)
+
+
+def _log_location(messages: list[str]) -> dict:
+    """Return the location of the first Yosys path:line: ERROR message."""
+    for message in messages:
+        match = re.match(r"(.+?):([0-9]+): ERROR: ", message)
+        if match:
+            return {"path": str(Path(match.group(1))), "line": int(match.group(2))}
+    return {}
 
 
 def _number(value):
@@ -88,51 +111,55 @@ def _normalize_unchecked(raw: dict, top: str, inspection: dict, project: Project
         module = raw["modules"][top]
     except KeyError as error:
         raise FrontendError("MISSING_TOP", f"Yosys did not produce the selected top module {top}") from error
-    if module.get("memories"):
-        raise FrontendError("UNSUPPORTED_MEMORY", "Memory arrays require a mapping that is not implemented")
-    if module.get("processes"):
-        raise FrontendError("UNLOWERED_PROCESS", "The HDL backend left an unlowered process")
+    for key, code, message in (("memories", "UNSUPPORTED_MEMORY", "Memory arrays require a mapping that is not implemented"),
+                               ("processes", "UNLOWERED_PROCESS", "The HDL backend left an unlowered process")):
+        if module.get(key):
+            first = next(iter(sorted(module[key].items())))[1]
+            raise FrontendError(code, message, **source_location(first.get("attributes", {}).get("src") if isinstance(first, dict) else None))
     if len(module.get("cells", {})) > 4096:
         raise FrontendError("DESIGN_LIMIT", "The elaborated design exceeds 4096 cells")
     nets = []
     for name, net in sorted(module.get("netnames", {}).items()):
         attributes = net.get("attributes", {})
         if "init" in attributes:
-            raise FrontendError("UNSUPPORTED_INITIALIZATION", f"Net {name} has an initialization value")
-        nets.append({"name": name, "bits": _bits(net["bits"], f"Net {name}"),
+            raise FrontendError("UNSUPPORTED_INITIALIZATION", f"Net {name} has an initialization value", **source_location(attributes.get("src")))
+        nets.append({"name": name, "bits": _bits(net["bits"], f"Net {name}", source=attributes.get("src", "")),
                      "offset": int(net.get("offset", 0)), "upto": bool(net.get("upto", 0)),
                      "signed": bool(net.get("signed", 0)), "source": attributes.get("src", ""),
                      "hidden": bool(net.get("hide_name", 0))})
     by_name = {net["name"]: net for net in nets}
     ports = []
     for name, port in module.get("ports", {}).items():
+        source = by_name.get(name, {}).get("source", "")
         if port["direction"] not in {"input", "output"}:
-            raise FrontendError("UNSUPPORTED_INOUT", f"Port {name} is not an ordinary input or output")
-        ports.append({"name": name, "direction": port["direction"], "bits": _bits(port["bits"], f"Port {name}"),
+            raise FrontendError("UNSUPPORTED_INOUT", f"Port {name} is not an ordinary input or output", **source_location(source))
+        ports.append({"name": name, "direction": port["direction"], "bits": _bits(port["bits"], f"Port {name}", source=source),
                       "offset": int(port.get("offset", 0)), "upto": bool(port.get("upto", 0)),
-                      "signed": bool(port.get("signed", 0)), "source": by_name.get(name, {}).get("source", "")})
+                      "signed": bool(port.get("signed", 0)), "source": source})
     cells = []
     for index, (native_name, cell) in enumerate(sorted(module.get("cells", {}).items())):
         kind = cell["type"]
+        source = cell.get("attributes", {}).get("src", "")
+        location = source_location(source)
         if "latch" in kind.lower():
-            raise FrontendError("UNSUPPORTED_LATCH", f"Cell {native_name} requires latch storage")
+            raise FrontendError("UNSUPPORTED_LATCH", f"Cell {native_name} requires latch storage", **location)
         if kind.startswith("$mem"):
-            raise FrontendError("UNSUPPORTED_MEMORY", f"Cell {native_name} requires memory storage")
+            raise FrontendError("UNSUPPORTED_MEMORY", f"Cell {native_name} requires memory storage", **location)
         if kind not in CELLS:
-            raise FrontendError("UNSUPPORTED_CELL", f"Frontend cell {kind} is outside the current support profile")
+            hint = " (a variable bit or part select, which can read unknown out-of-range bits)" if kind == "$shiftx" else ""
+            raise FrontendError("UNSUPPORTED_CELL", f"Frontend cell {kind}{hint} is outside the current support profile", **location)
         parameters = {key: _number(value) for key, value in sorted(cell.get("parameters", {}).items())}
         if kind == "$dff" and parameters.get("CLK_POLARITY") != 1:
-            raise FrontendError("UNSUPPORTED_CLOCK", "Only rising-edge registers are supported")
+            raise FrontendError("UNSUPPORTED_CLOCK", "Only rising-edge registers are supported", **location)
         connections = {pin: _bits(bits, f"{native_name}.{pin}",
-                                  width_limit=4096 if kind == "$pmux" and pin == "B" else 64)
+                                  width_limit=4096 if kind == "$pmux" and pin == "B" else 64, source=source)
                        for pin, bits in sorted(cell["connections"].items())}
         directions = dict(sorted(cell.get("port_directions", {}).items()))
         if set(directions) != set(connections) or any(direction not in {"input", "output"} for direction in directions.values()):
-            raise FrontendError("INVALID_CELL_PORTS", f"Cell {native_name} has missing or unsupported port directions")
+            raise FrontendError("INVALID_CELL_PORTS", f"Cell {native_name} has missing or unsupported port directions", **location)
         cells.append({"id": f"c{index:04d}", "type": kind, "native_name": native_name,
                       "parameters": parameters, "ports": connections, "port_directions": directions,
-                      "source": cell.get("attributes", {}).get("src", ""),
-                      "hierarchy": cell.get("attributes", {}).get("hdlname", native_name)})
+                      "source": source, "hierarchy": cell.get("attributes", {}).get("hdlname", native_name)})
     design = {"schema_version": 1, "top": top, "ports": ports, "cells": cells, "nets": nets,
               "origins": inspection.get("origins", []), "diagnostics": inspection.get("diagnostics", []),
               "tools": {"yosys": raw.get("creator", "unknown"), "pyslang": "11.0.0"},
@@ -216,7 +243,7 @@ def lower(project: Project, workdir: Path) -> Design:
             code = "COMBINATIONAL_CYCLE"
         elif "used but has no driver" in failures:
             code = "UNDRIVEN_NET"
-        raise FrontendError(code, "\n".join(messages[-10:]) or f"HDL lowering failed; details: {log_path}")
+        raise FrontendError(code, "\n".join(messages[-10:]) or f"HDL lowering failed; details: {log_path}", **_log_location(messages))
     if raw_path.stat().st_size > 64 * 1024 * 1024:
         raise FrontendError("DESIGN_LIMIT", "The elaborated JSON exceeds 64 MiB")
     raw = json.loads(raw_path.read_text(encoding="utf-8"))

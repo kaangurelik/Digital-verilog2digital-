@@ -41,6 +41,16 @@ endmodule
     assert json.loads((tmp_path / "frontend/source-inspection.json").read_text())["input_hashes"]
 
 
+def test_unconnected_child_input_is_a_located_undriven_diagnostic(tmp_path):
+    # Previously reported as a misleading zero-width UNSUPPORTED_WIDTH without a location.
+    with pytest.raises(FrontendError) as raised:
+        lower_text(tmp_path, "module child(input [3:0] a, output [3:0] y);\n assign y=~a;\nendmodule\n"
+                             "module top(input [3:0] b, output [3:0] y);\n child u(.y(y));\nendmodule\n")
+    assert raised.value.code == "UNDRIVEN_NET"
+    assert "u" in raised.value.message and "input a" in raised.value.message
+    assert Path(raised.value.path).name == "source.v" and raised.value.line == 5
+
+
 def test_repeated_state_with_unused_output_is_not_globally_eliminated(tmp_path):
     hierarchy = lower_text(tmp_path, """
 module child(input clk,rst,d, output reg q, output y);

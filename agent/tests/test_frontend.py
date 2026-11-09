@@ -100,6 +100,9 @@ def evaluate_combinational(design: dict, inputs: dict[str, int]) -> dict[str, in
                 result = int(operand("A") == operand("B"))
             elif kind == "$ne":
                 result = int(operand("A") != operand("B"))
+            elif kind == "$lt":
+                assert cell["parameters"]["A_SIGNED"] == cell["parameters"]["B_SIGNED"]
+                result = int(operand("A") < operand("B"))
             elif kind == "$logic_not":
                 result = int(not values["A"])
             elif kind == "$logic_and":
@@ -388,6 +391,70 @@ def test_unsupported_or_invalid_source_reports_structured_error(tmp_path, filena
         assert Path(error.path).name == filename
         assert error.line == 2
         assert isinstance(error.column, int) and error.column >= 1
+
+
+@pytest.mark.parametrize("text,code,line", [
+    ("module located(input [3:0] a, input [2:0] i, output y);\n  assign y = a[i];\nendmodule\n", "UNSUPPORTED_CELL", 2),
+    ("module located(input [64:0] a,\n  output y);\n  assign y = ^a;\nendmodule\n", "UNSUPPORTED_WIDTH", 1),
+    ("module located({a, b}, y);\n  input a, b;\n  output y;\n  assign y = a;\nendmodule\n", "YOSYS_ERROR", 1),
+])
+@pytest.mark.parametrize("hierarchical", [False, True])
+def test_rejections_after_inspection_keep_a_source_location(tmp_path, text, code, line, hierarchical):
+    from verilog2digital.frontend.hierarchy import lower_hierarchy
+    source = tmp_path / "located.v"
+    source.write_text(text, encoding="utf-8")
+    with pytest.raises(FrontendError) as raised:
+        (lower_hierarchy if hierarchical else lower)(Project([source], top="located"), tmp_path / "work")
+    assert raised.value.code == code
+    assert Path(raised.value.path) == source.resolve() and raised.value.line == line
+    if code == "UNSUPPORTED_CELL":
+        assert "$shiftx" in raised.value.message and raised.value.column >= 1
+
+
+def test_backend_memory_backstop_is_located():
+    # Inspection rejects source arrays first; a backend memory must still be located.
+    from verilog2digital.frontend.yosys import _normalize_unchecked
+    raw = {"modules": {"top": {"memories": {"m": {"attributes": {"src": "C:/hdl/top.v:3.13-3.14"}, "width": 8, "size": 4}}}}}
+    with pytest.raises(FrontendError) as raised:
+        _normalize_unchecked(raw, "top", {}, Project([]))
+    assert raised.value.code == "UNSUPPORTED_MEMORY"
+    assert (Path(raised.value.path), raised.value.line, raised.value.column) == (Path("C:/hdl/top.v"), 3, 13)
+
+
+def test_yosys_source_spans_become_structured_locations():
+    from verilog2digital.frontend.errors import source_location
+    assert source_location("C:/hdl/top.v:12.3-12.20") == {"path": str(Path("C:/hdl/top.v")), "line": 12, "column": 3}
+    assert source_location("a:b/top.v:7|other.v:1.1-1.2") == {"path": str(Path("a:b/top.v")), "line": 7}
+    assert source_location("") == source_location(None) == source_location("top.v") == {}
+
+
+def test_parameter_overrides_are_normalized_or_rejected_before_any_tool():
+    from verilog2digital.frontend.yosys import _parameter
+    assert [_parameter(value) for value in ("+5", " 0_7 ", 2147483647, "8'hF_0", "4'b1010")] == [
+        "5", "7", "2147483647", "8'hF_0", "4'b1010"]
+    for value, code in (("-1", "INVALID_PARAMETER"), (-3, "INVALID_PARAMETER"), ("8'shF0", "INVALID_PARAMETER"),
+                        ("4'Sd3", "INVALID_PARAMETER"), ("2147483648", "PARAMETER_LIMIT"), ("8'h_F", "INVALID_PARAMETER"),
+                        ("4'hx", "INVALID_PARAMETER"), ("65'h0", "PARAMETER_LIMIT"), ("1+1", "INVALID_PARAMETER")):
+        with pytest.raises(FrontendError) as raised:
+            _parameter(value)
+        assert raised.value.code == code, value
+
+
+@pytest.mark.parametrize("value,code", [("+5", None), ("-1", "INVALID_PARAMETER"), ("4'sd1", "INVALID_PARAMETER")])
+def test_signed_parameter_forms_never_reach_yosys_with_changed_meaning(tmp_path, value, code):
+    # Yosys rejected +5/-1 and silently made an untyped 4'sd1 override unsigned.
+    source = tmp_path / "signed_parameter.v"
+    source.write_text("module signed_parameter #(parameter K = 1)(input signed [3:0] a, output y);\n"
+                      "  assign y = a < K;\nendmodule\n", encoding="utf-8")
+    project = Project([source], top="signed_parameter", parameters={"K": value})
+    if code is not None:
+        with pytest.raises(FrontendError) as raised:
+            lower(project, tmp_path / "work")
+        assert raised.value.code == code
+        return
+    design = lower(project, tmp_path / "work")
+    assert evaluate_combinational(design, {"a": 15}) == {"y": 1}
+    assert evaluate_combinational(design, {"a": 5}) == {"y": 0}
 
 
 def test_missing_top_is_rejected(tmp_path):

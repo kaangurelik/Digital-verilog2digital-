@@ -16,10 +16,10 @@ import subprocess
 from .. import contracts
 from ..ir import _validate_cell, validate_design
 from ..runtime import development_toolchain, repository_root
-from .errors import FrontendError
+from .errors import FrontendError, source_location
 from .inspection import inspect_sources
 from .project import Project
-from .yosys import _bits, _command, _normalize_unchecked, _parameter, normalize, source_hashes
+from .yosys import _bits, _command, _log_location, _normalize_unchecked, _parameter, normalize, source_hashes
 
 MAX_MODULES = 64
 MAX_DEPTH = 12
@@ -59,7 +59,7 @@ def _run(directory: Path, name: str, commands: list[str], output: str) -> dict:
             if fragment in failures:
                 code = diagnostic
                 break
-        raise FrontendError(code, "\n".join(messages[-10:]) or f"Hierarchy lowering failed; details: {log_path}")
+        raise FrontendError(code, "\n".join(messages[-10:]) or f"Hierarchy lowering failed; details: {log_path}", **_log_location(messages))
     if result_path.stat().st_size > 64 * 1024 * 1024:
         raise FrontendError("DESIGN_LIMIT", "The hierarchy JSON exceeds 64 MiB")
     return json.loads(result_path.read_text(encoding="utf-8"))
@@ -107,6 +107,7 @@ def _modules(raw: dict, top: str, inspection: dict, project: Project) -> tuple[l
             target = raw_modules[cell["type"]]
             target_ports = target.get("ports", {})
             directions = {port: item["direction"] for port, item in target_ports.items()}
+            source = cell.get("attributes", {}).get("src", "")
             connections = {}
             for port, definition in target_ports.items():
                 bits = cell.get("connections", {}).get(port, [])
@@ -115,9 +116,13 @@ def _modules(raw: dict, top: str, inspection: dict, project: Project) -> tuple[l
                     # Give it fresh identities without adding an external load.
                     bits = list(range(next_bit, next_bit + len(definition["bits"])))
                     next_bit += len(bits)
-                connections[port] = _bits(bits, f"{native_name}.{port}")
+                elif not bits:
+                    # A floating input is high impedance; flattening reports it as undriven.
+                    raise FrontendError("UNDRIVEN_NET", f"Child instance {native_name} leaves input {port} unconnected; "
+                                        "connect every child input to a binary value", **source_location(source))
+                connections[port] = _bits(bits, f"{native_name}.{port}", source=source)
             if set(connections) != set(target_ports) or cell.get("port_directions") != directions or any(len(connections[port]) != len(target_ports[port]["bits"]) for port in connections):
-                raise FrontendError("HIERARCHY_INTERFACE", f"Child {native_name} does not exactly bind its specialized interface")
+                raise FrontendError("HIERARCHY_INTERFACE", f"Child {native_name} does not exactly bind its specialized interface", **source_location(source))
             attributes = cell.get("attributes", {})
             children.append({"id": child_id, "module_id": identities[cell["type"]][0],
                              "native_name": native_name, "ports": connections, "port_directions": directions,

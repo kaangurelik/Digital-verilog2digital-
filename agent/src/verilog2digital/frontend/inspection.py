@@ -326,7 +326,7 @@ def inspect_sources(sources: list[Path], *, top: str | None = None,
             if not str(path).isascii():
                 raise FrontendError("UNSUPPORTED_PATH",
                                     "The current Windows HDL tools require ASCII project and include paths. "
-                                    "Use the CLI or desktop to stage Unicode paths, or move the project and includes to an ASCII-only path.",
+                                    "Use the CLI, desktop or conversion.convert() to stage Unicode paths, or move the project and includes to an ASCII-only path.",
                                     path=str(path))
     for path in paths:
         if not path.is_file():
